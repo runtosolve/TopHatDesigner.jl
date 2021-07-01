@@ -57,6 +57,7 @@ new_deck_material_properties = (29500.0, 0.30, 55.0, 70.0)
 
 top_hat_purlin_line = TopHatDesigner.define(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, deck_details, deck_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, bridging_locations)
 
+
 top_hat_purlin_line.applied_pressure = 0.00000001
 top_hat_purlin_line = TopHatDesigner.analysis(top_hat_purlin_line)
 
