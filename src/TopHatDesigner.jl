@@ -66,6 +66,8 @@ mutable struct TopHatDesignerObject
     yielding_flexural_strength_yy::Array{PurlinLine.YieldingFlexuralStrengthData}
     yielding_flexural_strength_free_flange_yy::Array{PurlinLine.YieldingFlexuralStrengthData}
 
+    local_global_flexural_strength_xx_no_hole::Array{PurlinLine.LocalGlobalFlexuralStrengthData}
+    local_global_flexural_strength_xx_hole::Array{PurlinLine.LocalGlobalFlexuralStrengthData}
     local_global_flexural_strength_xx::Array{PurlinLine.LocalGlobalFlexuralStrengthData}
     local_global_flexural_strength_yy::Array{PurlinLine.LocalGlobalFlexuralStrengthData}
     local_global_flexural_strength_free_flange_yy::Array{PurlinLine.LocalGlobalFlexuralStrengthData}
@@ -91,6 +93,10 @@ mutable struct TopHatDesignerObject
     support_reactions::PurlinLine.Reactions
 
     demand_to_capacity::PurlinLine.DemandToCapacity
+
+    failure_limit_state::String
+
+    failure_location::Float64
 
     TopHatDesignerObject() = new()
 
@@ -327,6 +333,60 @@ function define_new_deck_bracing_properties(top_hat_purlin_line)
 
             #Collect all the outputs.
             bracing_data[i] = PurlinLine.BracingData(kp, kϕ, kϕ_dist, kx, Lcrd, Lm)
+
+        end
+
+    elseif top_hat_purlin_line.inputs.new_deck_details[1] == "no deck"
+              
+        #Loop over all the purlin segments in the line.  
+        #Assume that there is a TopHat segment for every purlin segment.
+        for i = 1:num_purlin_segments
+
+            #Define the section property index associated with purlin segment i.
+            section_index = top_hat_purlin_line.inputs.segments[i][2]
+
+            #Define the material property index associated with purlin segment i.
+            material_index = top_hat_purlin_line.inputs.segments[i][3]
+
+            #Define TopHat steel elastic modulus.
+            E_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][1]
+
+            #Define TopHat steel Poisson's ratio.
+            μ_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][2]
+
+            #Define TopHat steel ultimate stress.
+            Fu_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][4]
+
+            #Define the TopHat top flange width.
+            b_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][3]
+
+            #Define TopHat base metal thickness.
+            t_top_hat = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][1]
+
+            #Define out-to-out TopHat web depth.
+            ho = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][4]
+
+            #Define TopHat top flange lip length.
+            d_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][2]
+
+            #Define TopHat top flange lip angle from the horizon, in degrees.
+            θ_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][9]
+
+            #Apply Cee or Zee binary.   Assume the TopHat behaves like a Z for this stiffness calculation.
+            CorZ = 1
+
+            #Calculate top flange + lip section properties.
+            Af, Jf, Ixf, Iyf, Ixyf, Cwf, xof, hxf, hyf, yof = AISIS10016.table23131(CorZ, t_top_hat, b_top, d_top, θ_top)
+
+            #Define the distance between fasteners as the distortional discrete bracing length.  There is no deck or fasteners in this case, so set Lm = length of purlin line.
+            num_segments = size(top_hat_purlin_line.inputs.segments)[1]
+            Lm = sum([top_hat_purlin_line.inputs.segments[i][1] for i = 1:num_segments])
+
+            #Calculate the TopHat distortional buckling half-wavelength.
+            Lcrd, L = AISIS10016.app23334(ho, μ_top_hat, t_top_hat, Ixf, xof, hxf, Cwf, Ixyf, Iyf, Lm)
+
+            #Collect all the outputs.
+            bracing_data[i] = PurlinLine.BracingData(0.0, 0.0, 0.0, 0.0, Lcrd, Lm)
 
         end
 
@@ -831,6 +891,8 @@ function calculate_yielding_flexural_strength(top_hat_purlin_line)
             ASDorLRFD = 0
         elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 LRFD"
             ASDorLRFD = 1
+        elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 nominal"
+            ASDorLRFD = 2
         end
 
         Mcrℓ_yy_free_flange = 10.0^10 #Make this a big number so we just get back eMy
@@ -849,6 +911,8 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
     num_purlin_segments = size(top_hat_purlin_line.inputs.segments)[1]
 
     #Initialize a vectors that will hold all the outputs.
+    local_global_flexural_strength_xx_no_hole = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_xx_hole = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
     local_global_flexural_strength_xx = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
     local_global_flexural_strength_yy = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
     local_global_flexural_strength_free_flange_yy = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
@@ -858,33 +922,34 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
         ASDorLRFD = 0
     elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 LRFD"
         ASDorLRFD = 1
+    elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 nominal"
+        ASDorLRFD = 2
     end
 
     for i = 1:num_purlin_segments
 
         Mne_xx = top_hat_purlin_line.yielding_flexural_strength_xx[i].My  #handle global buckling in the ThinWalledBeam second order analysis
 
-        #Define Mcrℓ as the mininum of [Mcrℓ, Mcrℓ_hole] as suggested in AISI S100-16.
-
-        Mcrℓ = minimum([top_hat_purlin_line.local_buckling_xx_pos[i].Mcr, top_hat_purlin_line.local_buckling_xx_net_pos[i].Mcr])
-
-        buckling_index = findfirst(x->x≈Mcrℓ, [top_hat_purlin_line.local_buckling_xx_pos[i].Mcr, top_hat_purlin_line.local_buckling_xx_net_pos[i].Mcr])
-
-        #This is not tracking punchout location along the purlin line.  Consider in the future.
-
-        if buckling_index == 1  #local buckling occurs away from the punchouts
-
-            Mnℓ_xx_pos, eMnℓ_xx_pos =  AISIS10016.f321(Mne_xx, Mcrℓ, ASDorLRFD)
+        #Define Mnℓ as the mininum of [Mnℓ_no_hole, Mnℓ_hole] as suggested in AISI S100-16.
+        Mcrℓ_no_hole = top_hat_purlin_line.local_buckling_xx_pos[i].Mcr
+        Mnℓ_xx_pos_no_hole, eMnℓ_xx_pos_no_hole =  AISIS10016.f321(Mne_xx, Mcrℓ_no_hole, ASDorLRFD)
         
+        My_net = top_hat_purlin_line.yielding_flexural_strength_xx_net[i].My
+        Mcrℓ_hole = top_hat_purlin_line.local_buckling_xx_net_pos[i].Mcr
+        Mnℓ_xx_pos_hole, eMnℓ_xx_pos_hole =  AISIS10016.f322(Mne_xx, Mcrℓ_hole, My_net, ASDorLRFD)
 
-        elseif buckling_index == 2  #local buckling occurs at the hole
+        Mnℓ_xx_pos = minimum([Mnℓ_xx_pos_no_hole, Mnℓ_xx_pos_hole])
+        eMnℓ_xx_pos = minimum([eMnℓ_xx_pos_no_hole, eMnℓ_xx_pos_hole])
 
-            My_net = top_hat_purlin_line.yielding_flexural_strength_xx_net[i].My
-            Mnℓ_xx_pos, eMnℓ_xx_pos =  AISIS10016.f322(Mne_xx, Mcrℓ, My_net, ASDorLRFD)
-
-        end
+        buckling_index = findfirst(x->x≈Mnℓ_xx_pos, [Mnℓ_xx_pos_no_hole, Mnℓ_xx_pos_hole])
 
         Mnℓ_xx_neg, eMnℓ_xx_neg =  AISIS10016.f321(Mne_xx, top_hat_purlin_line.local_buckling_xx_neg[i].Mcr, ASDorLRFD)
+
+        local_global_flexural_strength_xx_no_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos_no_hole, Mnℓ_xx_neg, eMnℓ_xx_pos_no_hole, eMnℓ_xx_neg)
+
+        local_global_flexural_strength_xx_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos_hole, Mnℓ_xx_neg, eMnℓ_xx_pos_hole, eMnℓ_xx_neg)  #Mnℓ_xx_neg here does not include the influence of holes.
+
+        local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
 
         local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
 
@@ -912,7 +977,7 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
 
     end
 
-    return local_global_flexural_strength_xx, local_global_flexural_strength_yy, local_global_flexural_strength_free_flange_yy
+    return local_global_flexural_strength_xx_no_hole, local_global_flexural_strength_xx_hole,local_global_flexural_strength_xx, local_global_flexural_strength_yy, local_global_flexural_strength_free_flange_yy
 
 end
 
@@ -1117,6 +1182,8 @@ function calculate_distortional_flexural_strength(top_hat_purlin_line)
         ASDorLRFD = 0
     elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 LRFD"
         ASDorLRFD = 1
+    elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 nominal"
+        ASDorLRFD = 2
     end
 
     for i = 1:num_purlin_segments
@@ -1145,6 +1212,8 @@ function calculate_torsion_strength(top_hat_purlin_line)
         ASDorLRFD = 0
     elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 LRFD"
         ASDorLRFD = 1
+    elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 nominal"
+        ASDorLRFD = 2
     end
 
     for i = 1:num_purlin_segments
@@ -1188,6 +1257,8 @@ function calculate_shear_strength(top_hat_purlin_line)
         ASDorLRFD = 0
     elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 LRFD"
         ASDorLRFD = 1
+    elseif top_hat_purlin_line.inputs.design_code == "AISI S100-16 nominal"
+        ASDorLRFD = 2
     end
 
     for i = 1:num_purlin_segments
@@ -1326,7 +1397,7 @@ function define(design_code, segments, spacing, roof_slope, purlin_cross_section
     top_hat_purlin_line.yielding_flexural_strength_xx, top_hat_purlin_line.yielding_flexural_strength_xx_net, top_hat_purlin_line.yielding_flexural_strength_yy, top_hat_purlin_line.yielding_flexural_strength_free_flange_yy = calculate_yielding_flexural_strength(top_hat_purlin_line)
 
     #Calculate the local-global flexural strengths for each purlin line segment.   
-    top_hat_purlin_line.local_global_flexural_strength_xx, top_hat_purlin_line.local_global_flexural_strength_yy, top_hat_purlin_line.local_global_flexural_strength_free_flange_yy = calculate_local_global_flexural_strength(top_hat_purlin_line)
+    top_hat_purlin_line.local_global_flexural_strength_xx_no_hole, top_hat_purlin_line.local_global_flexural_strength_xx_hole, top_hat_purlin_line.local_global_flexural_strength_xx, top_hat_purlin_line.local_global_flexural_strength_yy, top_hat_purlin_line.local_global_flexural_strength_free_flange_yy = calculate_local_global_flexural_strength(top_hat_purlin_line)
 
     #Calculate distortional buckling strengths for each purlin line segment.
     top_hat_purlin_line.distortional_flexural_strength_xx = calculate_distortional_flexural_strength(top_hat_purlin_line)
@@ -1738,7 +1809,7 @@ function capacity(top_hat_purlin_line)
 
         load_sign = 1.0
     
-    elseif top_hat_purlin_line.loading_direction =="uplift"
+    elseif top_hat_purlin_line.loading_direction == "uplift"
     
         load_sign = -1.0
     
@@ -1763,6 +1834,9 @@ function capacity(top_hat_purlin_line)
         residual = 1.0 - abs(max_DC)
 
     end
+
+    top_hat_purlin_line.failure_limit_state, top_hat_purlin_line.failure_location = PurlinLine.identify_failure_limit_state(top_hat_purlin_line)
+
 
     return top_hat_purlin_line
 

@@ -1,8 +1,5 @@
 using TopHatDesigner
 
-# using StructuresKit
-# using PurlinLine
-
 
 design_code = "AISI S100-16 ASD"
 
