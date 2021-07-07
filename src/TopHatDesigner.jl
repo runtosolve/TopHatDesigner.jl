@@ -202,7 +202,7 @@ function define_top_hat_purlin_cross_sections(top_hat_purlin_line)
         purlin_t = top_hat_purlin_line.inputs.purlin_cross_section_dimensions[i][2]
 
         top_hat_node_geometry[:, 1] = top_hat_node_geometry[:, 1] .+ purlin_top_flange_centerline_geometry[1]
-        top_hat_node_geometry[:, 2] = top_hat_node_geometry[:, 2] .+ purlin_top_flange_centerline_geometry[2] .+ purlin_t
+        top_hat_node_geometry[:, 2] = top_hat_node_geometry[:, 2] .+ purlin_top_flange_centerline_geometry[2] .+ purlin_t/2 
 
         # #Shift TopHat node numbers after purlin node numbers.
 
@@ -949,9 +949,16 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
 
         local_global_flexural_strength_xx_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos_hole, Mnℓ_xx_neg, eMnℓ_xx_pos_hole, eMnℓ_xx_neg)  #Mnℓ_xx_neg here does not include the influence of holes.
 
-        local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+        if buckling_index == 1  #strength away from punchout controls, Mne = My
 
-        local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+            local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+
+        elseif buckling_index ==2  #strength at punchout controls, Mne = My_net
+
+            local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+
+        end
+
 
        
         ###weak axis flexure, local-global interaction
@@ -1299,7 +1306,7 @@ function calculate_shear_strength(top_hat_purlin_line)
         Vcr_purlin = AISIS10016.g231(h_flat_purlin, t_purlin, Fcrv_purlin)
 
         #Calculate shear buckling strength.
-        Vn_purlin, eVn_purlin = AISIS10016.g21(E_purlin, h_flat_purlin, t_purlin, Fy_purlin, Vcr_purlin, ASDorLRFD)
+        Vn_purlin, eVn_purlin = AISIS10016.g21(h_flat_purlin, t_purlin, Fy_purlin, Vcr_purlin, ASDorLRFD)
 
         #Vn, TopHat
 
@@ -1325,7 +1332,7 @@ function calculate_shear_strength(top_hat_purlin_line)
         Vcr_top_hat = AISIS10016.g231(h_flat_top_hat, t_top_hat, Fcrv_top_hat)
 
         #Calculate shear buckling strength for one web of TopHat.
-        Vn_top_hat, eVn_top_hat = AISIS10016.g21(E_top_hat, h_flat_top_hat, t_top_hat, Fy_top_hat, Vcr_top_hat, ASDorLRFD)
+        Vn_top_hat, eVn_top_hat = AISIS10016.g21(h_flat_top_hat, t_top_hat, Fy_top_hat, Vcr_top_hat, ASDorLRFD)
 
         Vn = Vn_purlin + 2 * Vn_top_hat
         eVn = eVn_purlin + 2 * eVn_top_hat
