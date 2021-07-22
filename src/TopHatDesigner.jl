@@ -92,7 +92,13 @@ mutable struct TopHatDesignerObject
 
     support_reactions::PurlinLine.Reactions
 
-    demand_to_capacity::PurlinLine.DemandToCapacity
+    flexure_torsion_demand_to_capacity::PurlinLine.FlexureTorsion_DemandToCapacity_Data
+    biaxial_bending_demand_to_capacity::PurlinLine.BiaxialBending_DemandToCapacity_Data
+    distortional_demand_to_capacity::Array{Float64}
+    flexure_shear_demand_to_capacity::Array{Float64}
+    web_crippling_demand_to_capacity::Array{Float64}
+
+    expected_strengths::PurlinLine.ExpectedStrengths
 
     failure_limit_state::String
 
@@ -103,36 +109,36 @@ mutable struct TopHatDesignerObject
 end
 
 
-function define_top_hat_cross_sections(top_hat_purlin_line)
+function define_top_hat_cross_sections(cross_section_dimensions, n, n_radius)
 
-    num_top_hat_sections = size(top_hat_purlin_line.inputs.top_hat_cross_section_dimensions)[1]
+    num_top_hat_sections = size(cross_section_dimensions)[1]
 
     cross_section_data = Vector{PurlinLine.CrossSectionData}(undef, num_top_hat_sections)
 
     for i = 1:num_top_hat_sections
 
         #Map dimensions to cross-section nomenclature.
-        t = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][1]
-        d_top_minus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][2]
-        b_top_minus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][3]
-        h_minus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][4]
-        b_bottom = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][5]
-        h_plus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][6]
-        b_top_plus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][7]
-        d_top_plus_y = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][8]
-        α1 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][9]
-        α2 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][10]
-        α3 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][11]
-        α4 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][12]
-        α5 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][13]
-        α6 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][14]
-        α7 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][15]
-        r1 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][16]
-        r2 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][17]
-        r3 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][18]
-        r4 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][19]
-        r5 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][20]
-        r6 = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[i][21]
+        t = cross_section_dimensions[i][1]
+        d_top_minus_y = cross_section_dimensions[i][2]
+        b_top_minus_y = cross_section_dimensions[i][3]
+        h_minus_y = cross_section_dimensions[i][4]
+        b_bottom = cross_section_dimensions[i][5]
+        h_plus_y = cross_section_dimensions[i][6]
+        b_top_plus_y = cross_section_dimensions[i][7]
+        d_top_plus_y = cross_section_dimensions[i][8]
+        α1 = cross_section_dimensions[i][9]
+        α2 = cross_section_dimensions[i][10]
+        α3 = cross_section_dimensions[i][11]
+        α4 = cross_section_dimensions[i][12]
+        α5 = cross_section_dimensions[i][13]
+        α6 = cross_section_dimensions[i][14]
+        α7 = cross_section_dimensions[i][15]
+        r1 = cross_section_dimensions[i][16]
+        r2 = cross_section_dimensions[i][17]
+        r3 = cross_section_dimensions[i][18]
+        r4 = cross_section_dimensions[i][19]
+        r5 = cross_section_dimensions[i][20]
+        r6 = cross_section_dimensions[i][21]
 
         #Define straight-line lengths on the top cross-section surface.   
         ΔL = [d_top_minus_y, b_top_minus_y, h_minus_y - t, b_bottom - 2*t, h_plus_y - t, b_top_plus_y, d_top_plus_y]
@@ -142,9 +148,6 @@ function define_top_hat_cross_sections(top_hat_purlin_line)
         radius = [r1, r2, r3-t, r4-t, r5, r6]
 
         closed_or_open = 1
-
-        n = [4, 4, 6, 4, 6, 4, 4]
-        n_radius = [4, 4, 4, 4, 4, 4]
 
         top_hat_section = CrossSection.Feature(ΔL, θ, n, radius, n_radius, closed_or_open)
 
@@ -174,7 +177,7 @@ function define_top_hat_cross_sections(top_hat_purlin_line)
         section_properties = CUFSM.cutwp_prop2(node_geometry, element_info)
 
         #Add cross section information to data structure.
-        cross_section_data[i] = PurlinLine.CrossSectionData(n, n_radius, node_geometry, element_info, section_properties)
+        cross_section_data[i] = PurlinLine.CrossSectionData(n, n_radius, node_geometry, element_info, section_properties, nothing)
 
     end
 
@@ -182,50 +185,66 @@ function define_top_hat_cross_sections(top_hat_purlin_line)
 
 end
 
+function combine_top_hat_purlin_geometry(purlin_cross_section_dimensions, purlin_cross_section_data, top_hat_cross_section_data)
+
+    #Find purlin top flange centerline.
+    purlin_top_flange_centerline_index = sum(purlin_cross_section_data.n[1:3]) + floor(Int,purlin_cross_section_data.n[4]/2) + sum(purlin_cross_section_data.n_radius[1:3]) + 1
+    purlin_top_flange_centerline_geometry = purlin_cross_section_data.node_geometry[purlin_top_flange_centerline_index, :]
+
+    #Shift TopHat geometry to sit on top of purlin top flange.
+    top_hat_node_geometry = deepcopy(top_hat_cross_section_data.node_geometry)
+    purlin_t = purlin_cross_section_dimensions[2]
+
+    top_hat_node_geometry[:, 1] = top_hat_node_geometry[:, 1] .+ purlin_top_flange_centerline_geometry[1]
+    top_hat_node_geometry[:, 2] = top_hat_node_geometry[:, 2] .+ purlin_top_flange_centerline_geometry[2] .+ purlin_t/2 
+
+    # #Shift TopHat node numbers after purlin node numbers.
+
+    num_purlin_nodes = size(purlin_cross_section_data.node_geometry)[1]
+    top_hat_element_definitions = deepcopy(top_hat_cross_section_data.element_definitions)
+
+    top_hat_element_definitions[:,1:2] = top_hat_element_definitions[:,1:2] .+ num_purlin_nodes
+
+    #Combine node geometry and element definitions for TopHat and purlin.
+
+    top_hat_purlin_node_geometry = [purlin_cross_section_data.node_geometry; top_hat_node_geometry]
+
+    top_hat_purlin_element_definitions = [purlin_cross_section_data.element_definitions; top_hat_element_definitions]
 
 
-function define_top_hat_purlin_cross_sections(top_hat_purlin_line)
+    return top_hat_purlin_node_geometry, top_hat_purlin_element_definitions
+
+end
+
+
+
+function define_top_hat_purlin_cross_sections(purlin_cross_section_dimensions, purlin_cross_section_data, top_hat_cross_section_data, purlin_plastic_cross_section_data, top_hat_plastic_cross_section_data)
 
     #Assume that for each purlin segment, there is a purlin cross-section and a TopHat cross-section defined.
-    num_strengthened_sections = size(top_hat_purlin_line.inputs.top_hat_cross_section_dimensions)[1]
+    num_strengthened_sections = size(purlin_cross_section_data)[1]
 
     top_hat_purlin_cross_section_data = Vector{PurlinLine.CrossSectionData}(undef, num_strengthened_sections)
 
     for i=1:num_strengthened_sections
 
-        #Find purlin top flange centerline.
-        purlin_top_flange_centerline_index = sum(top_hat_purlin_line.purlin_cross_section_data[i].n[1:3]) + floor(Int,top_hat_purlin_line.purlin_cross_section_data[i].n[4]/2) + sum(top_hat_purlin_line.purlin_cross_section_data[i].n_radius[1:3]) + 1
-        purlin_top_flange_centerline_geometry = top_hat_purlin_line.purlin_cross_section_data[i].node_geometry[purlin_top_flange_centerline_index, :]
+        top_hat_purlin_node_geometry, top_hat_purlin_element_definitions = combine_top_hat_purlin_geometry(purlin_cross_section_dimensions[i], purlin_cross_section_data[i], top_hat_cross_section_data[i])
 
-        #Shift TopHat geometry to sit on top of purlin top flange.
-        top_hat_node_geometry = deepcopy(top_hat_purlin_line.top_hat_cross_section_data[i].node_geometry)
-        purlin_t = top_hat_purlin_line.inputs.purlin_cross_section_dimensions[i][2]
-
-        top_hat_node_geometry[:, 1] = top_hat_node_geometry[:, 1] .+ purlin_top_flange_centerline_geometry[1]
-        top_hat_node_geometry[:, 2] = top_hat_node_geometry[:, 2] .+ purlin_top_flange_centerline_geometry[2] .+ purlin_t/2 
-
-        # #Shift TopHat node numbers after purlin node numbers.
-
-        num_purlin_nodes = size(top_hat_purlin_line.purlin_cross_section_data[i].node_geometry)[1]
-        top_hat_element_definitions = deepcopy(top_hat_purlin_line.top_hat_cross_section_data[i].element_definitions)
-
-        top_hat_element_definitions[:,1:2] = top_hat_element_definitions[:,1:2] .+ num_purlin_nodes
-
-        #Combine node geometry and element definitions for TopHat and purlin.
-
-        top_hat_purlin_node_geometry = [top_hat_purlin_line.purlin_cross_section_data[i].node_geometry; top_hat_node_geometry]
-
-        top_hat_purlin_element_definitions = [top_hat_purlin_line.purlin_cross_section_data[i].element_definitions; top_hat_element_definitions]
-
-        #Calculate section properties.
+        #Calculate elastic section properties.
         top_hat_purlin_section_properties = CUFSM.cutwp_prop2(top_hat_purlin_node_geometry, top_hat_purlin_element_definitions)
 
         #Combine discretization info.
-        n = [top_hat_purlin_line.purlin_cross_section_data[i].n; top_hat_purlin_line.top_hat_cross_section_data[i].n]
-        n_radius = [top_hat_purlin_line.purlin_cross_section_data[i].n_radius; top_hat_purlin_line.top_hat_cross_section_data[i].n_radius]
+        n = [purlin_cross_section_data[i].n; top_hat_cross_section_data[i].n]
+        n_radius = [purlin_cross_section_data[i].n_radius; top_hat_cross_section_data[i].n_radius]
+
+        #######
+        #Calculate TopHat+purlin plastic neutral axis and plastic modulus.
+        top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions = combine_top_hat_purlin_geometry(purlin_cross_section_dimensions[i], purlin_plastic_cross_section_data[i], top_hat_plastic_cross_section_data[i])
+
+        about_axis = "x"  #The strong axis plastic properties are needed for now.  
+        top_hat_purlin_plastic_section_properties = StructuresKit.CrossSection.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
 
         #Add cross section information to data structure.
-        top_hat_purlin_cross_section_data[i] = PurlinLine.CrossSectionData(n, n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, top_hat_purlin_section_properties)
+        top_hat_purlin_cross_section_data[i] = PurlinLine.CrossSectionData(n, n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, top_hat_purlin_section_properties, top_hat_purlin_plastic_section_properties)
 
     end
 
@@ -635,45 +654,62 @@ function calculate_elastic_buckling_properties(top_hat_purlin_line)
 
 end
 
-function define_top_hat_purlin_net_section(top_hat_purlin_line)
 
-    num_purlin_sections = size(top_hat_purlin_line.inputs.purlin_cross_section_dimensions)[1]
+function generate_top_hat_net_section_purlin_geometry(top_hat_purlin_cross_section_data, top_hat_cross_section_data, purlin_cross_section_data, purlin_cross_section_dimensions, top_hat_punch_out_dimensions)
 
-    cross_section_data = Vector{CrossSectionData}(undef, num_purlin_sections)
+
+    num_purlin_nodes = size(purlin_cross_section_data.node_geometry)[1]
+
+    #Find all cross-section nodes that are in the TopHat punchout region.
+    top_hat_node_geometry = top_hat_cross_section_data.node_geometry[:,1:2]
+    hole_index = findall(x->x<top_hat_punch_out_dimensions[2], top_hat_node_geometry[:,2])
+
+    #Shift the cross-section nodes to match up with the punch out dimensions.
+    h_purlin = purlin_cross_section_dimensions[5]
+    top_hat_purlin_node_geometry = top_hat_purlin_cross_section_data.node_geometry[:,1:2]
+    top_hat_purlin_node_geometry[[hole_index[1] + num_purlin_nodes, hole_index[end] + num_purlin_nodes], 2] .=  h_purlin + top_hat_punch_out_dimensions[2]
+
+    #Delete the nodes within the punchout region.
+    remove_hole_nodes_index = hole_index[2:(end-1)] .+ num_purlin_nodes
+    top_hat_purlin_node_geometry = top_hat_purlin_node_geometry[setdiff(1:end, remove_hole_nodes_index), :]
+
+    #Remove elements at punchouts.
+    top_hat_purlin_element_definitions = top_hat_purlin_cross_section_data.element_definitions
+    remove_hole_elements_index = hole_index[1:end] .+ num_purlin_nodes .- 1
+    top_hat_purlin_element_definitions = top_hat_purlin_element_definitions[setdiff(1:end, remove_hole_elements_index), :]
+
+    #Update nodal connectivity.
+    update_index = remove_hole_elements_index[1]
+    num_removed_elements = length(remove_hole_elements_index)
+
+    top_hat_purlin_element_definitions[update_index:end, 1:2] = top_hat_purlin_element_definitions[update_index:end, 1:2] .- num_removed_elements .+ 1
+    
+    return top_hat_purlin_node_geometry, top_hat_purlin_element_definitions
+
+end
+
+
+function define_top_hat_purlin_net_section(purlin_cross_section_dimensions, top_hat_cross_section_data, top_hat_plastic_cross_section_data, purlin_cross_section_data, purlin_plastic_cross_section_data, top_hat_purlin_cross_section_data, top_hat_purlin_plastic_cross_section_data, top_hat_punch_out_dimensions)
+
+    num_purlin_sections = size(purlin_cross_section_dimensions)[1]
+
+    cross_section_data = Vector{PurlinLine.CrossSectionData}(undef, num_purlin_sections)
 
     for i=1:num_purlin_sections
 
-        num_purlin_nodes = size(top_hat_purlin_line.purlin_cross_section_data[i].node_geometry)[1]
+        top_hat_purlin_node_geometry, top_hat_purlin_element_definitions = generate_top_hat_net_section_purlin_geometry(top_hat_purlin_cross_section_data[i], top_hat_cross_section_data[i], purlin_cross_section_data[i], purlin_cross_section_dimensions[i],top_hat_punch_out_dimensions)
 
-        #Find all cross-section nodes that are in the TopHat punchout region.
-        top_hat_node_geometry = top_hat_purlin_line.top_hat_cross_section_data[i].node_geometry[:,1:2]
-        hole_index = findall(x->x<top_hat_purlin_line.inputs.top_hat_punch_out_dimensions[2], top_hat_node_geometry[:,2])
-    
-        #Shift the cross-section nodes to match up with the punch out dimensions.
-        h_purlin = top_hat_purlin_line.inputs.purlin_cross_section_dimensions[i][5]
-        top_hat_purlin_node_geometry = top_hat_purlin_line.top_hat_purlin_cross_section_data[i].node_geometry[:,1:2]
-        top_hat_purlin_node_geometry[[hole_index[1] + num_purlin_nodes, hole_index[end] + num_purlin_nodes], 2] .=  h_purlin + top_hat_purlin_line.inputs.top_hat_punch_out_dimensions[2]
-    
-        #Delete the nodes within the punchout region.
-        remove_hole_nodes_index = hole_index[2:(end-1)] .+ num_purlin_nodes
-        top_hat_purlin_node_geometry = top_hat_purlin_node_geometry[setdiff(1:end, remove_hole_nodes_index), :]
-    
-        #Remove elements at punchouts.
-        top_hat_purlin_element_definitions = top_hat_purlin_line.top_hat_purlin_cross_section_data[i].element_definitions
-        remove_hole_elements_index = hole_index[1:end] .+ num_purlin_nodes .- 1
-        top_hat_purlin_element_definitions = top_hat_purlin_element_definitions[setdiff(1:end, remove_hole_elements_index), :]
-    
-        #Update nodal connectivity.
-        update_index = remove_hole_elements_index[1]
-        num_removed_elements = length(remove_hole_elements_index)
-    
-        top_hat_purlin_element_definitions[update_index:end, 1:2] = top_hat_purlin_element_definitions[update_index:end, 1:2] .- num_removed_elements .+ 1
-    
         #Calculate section properties of net section at a TopHat punchout.
         section_properties = CUFSM.cutwp_prop2(top_hat_purlin_node_geometry, top_hat_purlin_element_definitions)
-    
+
+        #Calculate TopHat+purlin plastic neutral axis and plastic modulus at the punchout net section.
+        top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions = generate_top_hat_net_section_purlin_geometry(top_hat_purlin_plastic_cross_section_data[i], top_hat_plastic_cross_section_data[i], purlin_plastic_cross_section_data[i], purlin_cross_section_dimensions[i], top_hat_punch_out_dimensions)
+
+        about_axis = "x"  #The strong axis plastic properties are needed for now.  
+        top_hat_purlin_plastic_section_properties = StructuresKit.CrossSection.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
+
         #Add cross section information to data structure.
-        cross_section_data[i] = PurlinLine.CrossSectionData(top_hat_purlin_line.top_hat_purlin_cross_section_data[i].n, top_hat_purlin_line.top_hat_purlin_cross_section_data[i].n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, section_properties)
+        cross_section_data[i] = PurlinLine.CrossSectionData(top_hat_purlin_cross_section_data[i].n, top_hat_purlin_cross_section_data[i].n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, section_properties, top_hat_purlin_plastic_section_properties)
 
     end
 
@@ -803,10 +839,10 @@ function calculate_yielding_flexural_strength(top_hat_purlin_line)
     num_purlin_segments = size(top_hat_purlin_line.inputs.segments)[1]
 
     #Initialize a vectors that will hold all the outputs.
-    yielding_flexural_strength_xx = Array{YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    yielding_flexural_strength_xx_net = Array{YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    yielding_flexural_strength_yy = Array{YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    yielding_flexural_strength_free_flange_yy = Array{YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    yielding_flexural_strength_xx = Array{PurlinLine.YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    yielding_flexural_strength_xx_net = Array{PurlinLine.YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    yielding_flexural_strength_yy = Array{PurlinLine.YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    yielding_flexural_strength_free_flange_yy = Array{PurlinLine.YieldingFlexuralStrengthData, 1}(undef, num_purlin_segments)
 
 
     for i = 1:num_purlin_segments
@@ -898,7 +934,7 @@ function calculate_yielding_flexural_strength(top_hat_purlin_line)
         Mcrℓ_yy_free_flange = 10.0^10 #Make this a big number so we just get back eMy
         My_yy_free_flange, eMy_yy_free_flange = AISIS10016.f321(My_yy_free_flange, Mcrℓ_yy_free_flange, ASDorLRFD)
 
-        yielding_flexural_strength_free_flange_yy[i] = YieldingFlexuralStrengthData(Syy_pos_free_flange, Syy_neg_free_flange, My_yy_pos_free_flange, My_yy_neg_free_flange, My_yy_free_flange, eMy_yy_free_flange)
+        yielding_flexural_strength_free_flange_yy[i] = PurlinLine.YieldingFlexuralStrengthData(Syy_pos_free_flange, Syy_neg_free_flange, My_yy_pos_free_flange, My_yy_neg_free_flange, My_yy_free_flange, eMy_yy_free_flange)
 
     end
 
@@ -911,11 +947,11 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
     num_purlin_segments = size(top_hat_purlin_line.inputs.segments)[1]
 
     #Initialize a vectors that will hold all the outputs.
-    local_global_flexural_strength_xx_no_hole = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    local_global_flexural_strength_xx_hole = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    local_global_flexural_strength_xx = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    local_global_flexural_strength_yy = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
-    local_global_flexural_strength_free_flange_yy = Array{LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_xx_no_hole = Array{PurlinLine.LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_xx_hole = Array{PurlinLine.LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_xx = Array{PurlinLine.LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_yy = Array{PurlinLine.LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
+    local_global_flexural_strength_free_flange_yy = Array{PurlinLine.LocalGlobalFlexuralStrengthData, 1}(undef, num_purlin_segments)
 
 
     if top_hat_purlin_line.inputs.design_code == "AISI S100-16 ASD"
@@ -928,39 +964,103 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
 
     for i = 1:num_purlin_segments
 
-        Mne_xx = top_hat_purlin_line.yielding_flexural_strength_xx[i].My  #handle global buckling in the ThinWalledBeam second order analysis
+        section_index = top_hat_purlin_line.inputs.segments[i][2]
+        material_index = top_hat_purlin_line.inputs.segments[i][3]
+
+        #Set Mne=My and handle global buckling with second order analysis.
+        Mne_xx = top_hat_purlin_line.yielding_flexural_strength_xx[i].My  
+
+        ###Work on positive flexure. Define Mnℓ as the mininum of [Mnℓ_no_hole, Mnℓ_hole] as suggested in AISI S100-16.
+        
+        #Start with section away from punchout.   Consider inelastic reserve.
+
+        Mcrℓ_pos_no_hole = top_hat_purlin_line.local_buckling_xx_pos[i].Mcr
+
+        λ_ℓ_pos_no_hole = sqrt(Mne_xx/Mcrℓ_pos_no_hole)
+
+        if λ_ℓ_pos_no_hole < 0.776   #inelastic reserve is in play
+
+            Sc = top_hat_purlin_line.yielding_flexural_strength_xx[i].S_pos
+            St = top_hat_purlin_line.yielding_flexural_strength_xx[i].S_neg
+            Z =  top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].plastic_section_properties.Z
+            Fy_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][3]
+            Fy_purlin = top_hat_purlin_line.inputs.purlin_material_properties[material_index][3]
+            Fy = minimum([Fy_top_hat, Fy_purlin])  #take the minimum for now, can improve later
+            lambda_l, Cyl, Mp, Myc, Myt3, Mnℓ_xx_pos_no_hole, eMnℓ_xx_pos_no_hole = AISIS10016.f323(Mne_xx, Mcrℓ_pos_no_hole, Sc, St, Z, Fy, ASDorLRFD)
+
+        else
+
+            Mnℓ_xx_pos_no_hole, eMnℓ_xx_pos_no_hole =  AISIS10016.f321(Mne_xx, Mcrℓ_pos_no_hole, ASDorLRFD)
+        
+        end
+
+        #Now work on section at a punchout. Consider inelastic reserve.
 
         #Define Mnℓ as the mininum of [Mnℓ_no_hole, Mnℓ_hole] as suggested in AISI S100-16.
-        Mcrℓ_no_hole = top_hat_purlin_line.local_buckling_xx_pos[i].Mcr
-        Mnℓ_xx_pos_no_hole, eMnℓ_xx_pos_no_hole =  AISIS10016.f321(Mne_xx, Mcrℓ_no_hole, ASDorLRFD)
-        
         My_net = top_hat_purlin_line.yielding_flexural_strength_xx_net[i].My
-        Mcrℓ_hole = top_hat_purlin_line.local_buckling_xx_net_pos[i].Mcr
-        Mnℓ_xx_pos_hole, eMnℓ_xx_pos_hole =  AISIS10016.f322(Mne_xx, Mcrℓ_hole, My_net, ASDorLRFD)
+        Mcrℓ_pos_hole = top_hat_purlin_line.local_buckling_xx_net_pos[i].Mcr
+    
+        λ_ℓ_pos_hole = sqrt(Mne_xx/Mcrℓ_pos_hole)
+
+        if λ_ℓ_pos_hole < 0.776   #inelastic reserve is in play
+
+            Sc = top_hat_purlin_line.yielding_flexural_strength_xx_net[i].S_pos
+            St = top_hat_purlin_line.yielding_flexural_strength_xx_net[i].S_neg
+            Z =  top_hat_purlin_line.top_hat_purlin_net_cross_section_data[section_index].plastic_section_properties.Z
+            Fy_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][3]
+            Fy_purlin = top_hat_purlin_line.inputs.purlin_material_properties[material_index][3]
+            Fy = minimum([Fy_top_hat, Fy_purlin])  #take the minimum for now, can improve later
+            lambda_l, Cyl, Mp, Myc, Myt3, Mnℓ_xx_pos_hole, eMnℓ_xx_pos_hole = AISIS10016.f323(My_net, Mcrℓ_pos_hole, Sc, St, Z, Fy, ASDorLRFD)
+
+        else
+
+            Mnℓ_xx_pos_hole, eMnℓ_xx_pos_hole =  AISIS10016.f322(Mne_xx, Mcrℓ_pos_hole, My_net, ASDorLRFD)
+        
+        end
 
         Mnℓ_xx_pos = minimum([Mnℓ_xx_pos_no_hole, Mnℓ_xx_pos_hole])
         eMnℓ_xx_pos = minimum([eMnℓ_xx_pos_no_hole, eMnℓ_xx_pos_hole])
 
-        buckling_index = findfirst(x->x≈Mnℓ_xx_pos, [Mnℓ_xx_pos_no_hole, Mnℓ_xx_pos_hole])
+        ##### Now negative flexure.
 
-        Mnℓ_xx_neg, eMnℓ_xx_neg =  AISIS10016.f321(Mne_xx, top_hat_purlin_line.local_buckling_xx_neg[i].Mcr, ASDorLRFD)
+        #Define Mnℓ as the mininum of [Mnℓ_no_hole, Mnℓ_hole] as suggested in AISI S100-16.
+        Mcrℓ_neg_no_hole = top_hat_purlin_line.local_buckling_xx_neg[i].Mcr
 
-        local_global_flexural_strength_xx_no_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos_no_hole, Mnℓ_xx_neg, eMnℓ_xx_pos_no_hole, eMnℓ_xx_neg)
+        λ_ℓ_neg_no_hole = sqrt(Mne_xx/Mcrℓ_neg_no_hole)
 
-        local_global_flexural_strength_xx_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos_hole, Mnℓ_xx_neg, eMnℓ_xx_pos_hole, eMnℓ_xx_neg)  #Mnℓ_xx_neg here does not include the influence of holes.
+        if λ_ℓ_neg_no_hole < 0.776   #inelastic reserve is in play
 
-        if buckling_index == 1  #strength away from punchout controls, Mne = My
+            Sc = top_hat_purlin_line.yielding_flexural_strength_xx[i].S_neg
+            St = top_hat_purlin_line.yielding_flexural_strength_xx[i].S_pos
+            Z =  top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].plastic_section_properties.Z
+            Fy_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][3]
+            Fy_purlin = top_hat_purlin_line.inputs.purlin_material_properties[material_index][3]
+            Fy = minimum([Fy_top_hat, Fy_purlin])  #take the minimum for now, can improve later
+            lambda_l, Cyl, Mp, Myc, Myt3, Mnℓ_xx_neg_no_hole, eMnℓ_xx_neg_no_hole = AISIS10016.f323(Mne_xx, Mcrℓ_neg_no_hole, Sc, St, Z, Fy, ASDorLRFD)
 
-            local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+        else
 
-        elseif buckling_index ==2  #strength at punchout controls, Mne = My_net
-
-            local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
-
+            Mnℓ_xx_neg_no_hole, eMnℓ_xx_neg_no_hole =  AISIS10016.f321(Mne_xx, Mcrℓ_neg_no_hole, ASDorLRFD)
+        
         end
+        
+        #At a TopHat punchout, net section yielding is the upper limit for negative flexure.  
+        Mnℓ_xx_neg_hole, eMnℓ_xx_neg_hole =  AISIS10016.f322(Mne_xx, Mcrℓ_neg_no_hole, My_net, ASDorLRFD)
+
+        #Find the minimum of the strengths at the punchout or away from the punchout.
+        Mnℓ_xx_neg = minimum([Mnℓ_xx_neg_no_hole, Mnℓ_xx_neg_hole])
+        eMnℓ_xx_neg = minimum([eMnℓ_xx_neg_no_hole, eMnℓ_xx_neg_hole])
 
 
-       
+        #Add no hole positive and negative flexural strength to data structure. 
+        local_global_flexural_strength_xx_no_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos_no_hole, Mnℓ_xx_neg_no_hole, eMnℓ_xx_pos_no_hole, eMnℓ_xx_neg_no_hole)
+
+        #Add net section positive and negative flexural strength to data structure. 
+        local_global_flexural_strength_xx_hole[i] = PurlinLine.LocalGlobalFlexuralStrengthData(My_net, Mnℓ_xx_pos_hole, Mnℓ_xx_neg_hole, eMnℓ_xx_pos_hole, eMnℓ_xx_neg_hole)  
+
+        #Add the governing (hole or no hole) positive and negative strong xx flexural strengths to the data structure.
+        local_global_flexural_strength_xx[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_xx, Mnℓ_xx_pos, Mnℓ_xx_neg, eMnℓ_xx_pos, eMnℓ_xx_neg)
+
         ###weak axis flexure, local-global interaction
         Mne_yy = top_hat_purlin_line.yielding_flexural_strength_yy[i].My
 
@@ -980,7 +1080,7 @@ function calculate_local_global_flexural_strength(top_hat_purlin_line)
 
         Mnℓ_yy_neg_free_flange, eMnℓ_yy_neg_free_flange = AISIS10016.f321(Mne_yy_free_flange, Mne_yy_free_flange * 1000, ASDorLRFD)
 
-        local_global_flexural_strength_free_flange_yy[i] = LocalGlobalFlexuralStrengthData(Mne_yy_free_flange, Mnℓ_yy_pos_free_flange, Mnℓ_yy_neg_free_flange, eMnℓ_yy_pos_free_flange, eMnℓ_yy_neg_free_flange)
+        local_global_flexural_strength_free_flange_yy[i] = PurlinLine.LocalGlobalFlexuralStrengthData(Mne_yy_free_flange, Mnℓ_yy_pos_free_flange, Mnℓ_yy_neg_free_flange, eMnℓ_yy_pos_free_flange, eMnℓ_yy_neg_free_flange)
 
     end
 
@@ -994,7 +1094,7 @@ function define_top_hat_purlin_distortional_net_section(top_hat_purlin_line)
 
     num_purlin_segments = size(top_hat_purlin_line.inputs.segments)[1]
 
-    cross_section_data = Vector{CrossSectionData}(undef, num_purlin_segments)
+    cross_section_data = Vector{PurlinLine.CrossSectionData}(undef, num_purlin_segments)
 
     #Define length of TopHat punchout.
     L_hole = top_hat_purlin_line.inputs.top_hat_punch_out_dimensions[1]
@@ -1048,7 +1148,7 @@ function define_top_hat_purlin_distortional_net_section(top_hat_purlin_line)
         section_properties = CUFSM.cutwp_prop2(top_hat_purlin_node_geometry, top_hat_purlin_element_definitions)
     
         #Add cross section information to data structure.
-        cross_section_data[i] = PurlinLine.CrossSectionData(top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].n, top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, section_properties)
+        cross_section_data[i] = PurlinLine.CrossSectionData(top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].n, top_hat_purlin_line.top_hat_purlin_cross_section_data[section_index].n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, section_properties, nothing)
 
     end
 
@@ -1242,7 +1342,7 @@ function calculate_torsion_strength(top_hat_purlin_line)
 
         Bn, eBn = AISIS10024.h411(Cw, Fy, Wn, ASDorLRFD)
 
-        torsion_strength[i] = TorsionStrengthData(Wn, Bn, eBn)
+        torsion_strength[i] = PurlinLine.TorsionStrengthData(Wn, Bn, eBn)
 
     end
 
@@ -1358,21 +1458,43 @@ function define(design_code, segments, spacing, roof_slope, purlin_cross_section
     top_hat_purlin_line.inputs = TopHatDesigner.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, bridging_locations)
 
     #Define TopHat cross-section data including nodal geometry, cross-section discretization and section properties.
-    top_hat_purlin_line.top_hat_cross_section_data = define_top_hat_cross_sections(top_hat_purlin_line)
+    n = [4, 4, 6, 4, 6, 4, 4]
+    n_radius = [4, 4, 4, 4, 4, 4]
+    top_hat_purlin_line.top_hat_cross_section_data = define_top_hat_cross_sections(top_hat_purlin_line.inputs.top_hat_cross_section_dimensions, n, n_radius)
 
     #Create the PurlinLine data structure.
-    purlin_line = PurlinLineObject()
+    purlin_line = PurlinLine.PurlinLineObject()
 
     #Capture PurlinLine inputs.
     purlin_line.inputs = PurlinLine.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, purlin_material_properties, deck_details, deck_material_properties, frame_flange_width, support_locations, bridging_locations)
 
-    #Calculate purlin and purlin free flange section properties.
-    top_hat_purlin_line.purlin_cross_section_data, top_hat_purlin_line.free_flange_cross_section_data = PurlinLine.calculate_purlin_section_properties(purlin_line)
+    #Define the purlin cross-section discretization and calculate section properties.
+    n = [4, 4, 5, 4, 4]
+    n_radius = [4, 4, 4, 4]
+    top_hat_purlin_line.purlin_cross_section_data = PurlinLine.define_purlin_section(purlin_line.inputs.cross_section_dimensions, n, n_radius)
     purlin_line.cross_section_data = top_hat_purlin_line.purlin_cross_section_data
+
+    #Define the purlin free flange cross-section discretization and calculate section properties.
+    n = [4, 4, 4]
+    n_radius = [4, 4]
+    top_hat_purlin_line.free_flange_cross_section_data = PurlinLine.define_purlin_free_flange_section(purlin_line.inputs.cross_section_dimensions, n, n_radius)
     purlin_line.free_flange_cross_section_data = top_hat_purlin_line.free_flange_cross_section_data
 
+    #Define the purlin cross-section discretization for calculating plastic properties.
+    n = [4, 4, 5, 4, 4] .* 10
+    n_radius = [4, 4, 4, 4]
+    purlin_plastic_cross_section_data = PurlinLine.define_purlin_section(purlin_line.inputs.cross_section_dimensions, n, n_radius)
+   
+    #Define TopHat cross-section discretizaton for calculating plastic properties.
+    n = [4, 4, 6, 4, 6, 4, 4] .* 10
+    n_radius = [4, 4, 4, 4, 4, 4]
+    top_hat_plastic_cross_section_data = define_top_hat_cross_sections(top_hat_purlin_line.inputs.top_hat_cross_section_dimensions, n, n_radius)
+
     #Define TopHat + purlin properties.
-    top_hat_purlin_line.top_hat_purlin_cross_section_data = define_top_hat_purlin_cross_sections(top_hat_purlin_line)
+    top_hat_purlin_line.top_hat_purlin_cross_section_data = define_top_hat_purlin_cross_sections(top_hat_purlin_line.inputs.purlin_cross_section_dimensions, top_hat_purlin_line.purlin_cross_section_data, top_hat_purlin_line.top_hat_cross_section_data, purlin_plastic_cross_section_data, top_hat_plastic_cross_section_data)
+   
+    #Define TopHat + purlin plastic discretization.
+    top_hat_purlin_plastic_cross_section_data = define_top_hat_purlin_cross_sections(top_hat_purlin_line.inputs.purlin_cross_section_dimensions, purlin_plastic_cross_section_data, top_hat_plastic_cross_section_data, purlin_plastic_cross_section_data, top_hat_plastic_cross_section_data)
 
     #Calculate deck bracing properties.  This is for the purlin to deck.   
     #Assume for now that adding big screws and the TopHat does not change the stiffness properties. 
@@ -1383,6 +1505,7 @@ function define(design_code, segments, spacing, roof_slope, purlin_cross_section
     #Assume shear flow is unchanged with addition of the TopHat.
     top_hat_purlin_line.free_flange_data = PurlinLine.calculate_free_flange_shear_flow_properties(purlin_line)
 
+
     #Calculate bracing properties for new roof deck to TopHat.
     top_hat_purlin_line.new_deck_bracing_data = define_new_deck_bracing_properties(top_hat_purlin_line)
 
@@ -1390,7 +1513,7 @@ function define(design_code, segments, spacing, roof_slope, purlin_cross_section
     top_hat_purlin_line.local_buckling_xx_pos, top_hat_purlin_line.local_buckling_xx_neg, top_hat_purlin_line.local_buckling_yy_pos, top_hat_purlin_line.local_buckling_yy_neg, top_hat_purlin_line.distortional_buckling_xx_pos, top_hat_purlin_line.distortional_buckling_xx_neg = TopHatDesigner.calculate_elastic_buckling_properties(top_hat_purlin_line)
 
     #Calculate net section properties and add to TopHatDesigner data structure.
-    top_hat_purlin_line.top_hat_purlin_net_cross_section_data = define_top_hat_purlin_net_section(top_hat_purlin_line)
+    top_hat_purlin_line.top_hat_purlin_net_cross_section_data = define_top_hat_purlin_net_section(top_hat_purlin_line.inputs.purlin_cross_section_dimensions, top_hat_purlin_line.top_hat_cross_section_data, top_hat_plastic_cross_section_data, top_hat_purlin_line.purlin_cross_section_data, purlin_plastic_cross_section_data,  top_hat_purlin_line.top_hat_purlin_cross_section_data, top_hat_purlin_plastic_cross_section_data, top_hat_purlin_line.inputs.top_hat_punch_out_dimensions)
 
     #Calculate local buckling at the TopHat punchout.
     top_hat_purlin_line.local_buckling_xx_net_pos = calculate_net_section_local_buckling_properties(top_hat_purlin_line)
@@ -1612,7 +1735,7 @@ end
 function beam_column_interface(top_hat_purlin_line)
 
     #Discretize purlin line.
-    member_definitions, dz, z, m = discretize_purlin_line(top_hat_purlin_line)
+    member_definitions, dz, z, m = PurlinLine.discretize_purlin_line(top_hat_purlin_line)
 
     #Define the number of purlin cross-sections.
     num_purlin_sections = size(top_hat_purlin_line.inputs.purlin_cross_section_dimensions)[1]
@@ -1794,15 +1917,17 @@ function analysis(top_hat_purlin_line)
     #Add free flange internal forces to data structure.
     top_hat_purlin_line.free_flange_internal_forces = PurlinLine.InternalForceData(Pf, Mxx, Myy, Vxx, Vyy, T, B)
 
-    #Calculate demand-to-capacity ratios for each of the purlin line limit states.
-    DC_flexure_torsion = PurlinLine.calculate_bending_torsion_DC(top_hat_purlin_line)
-    DC_distortional = PurlinLine.calculate_distortional_buckling_DC(top_hat_purlin_line)
-    DC_flexure_shear = PurlinLine.calculate_flexure_shear_DC(top_hat_purlin_line)        
-    DC_biaxial_bending = PurlinLine.calculate_biaxial_bending_DC(top_hat_purlin_line)
-    DC_web_crippling = PurlinLine.calculate_web_crippling_DC(top_hat_purlin_line)
 
-    #Add demand-to-capacity ratios to data structure.
-    top_hat_purlin_line.demand_to_capacity = PurlinLine.DemandToCapacity(DC_flexure_torsion, DC_distortional, DC_flexure_shear, DC_biaxial_bending, DC_web_crippling)
+
+    #Calculate demand-to-capacity ratios for each of the purlin line limit states.
+    top_hat_purlin_line.flexure_torsion_demand_to_capacity, eMnℓ_xx_all, eMnℓ_yy_all, eBn_all, eMnℓ_yy_free_flange_all = PurlinLine.calculate_flexure_torsion_demand_to_capacity(top_hat_purlin_line)
+    top_hat_purlin_line.distortional_demand_to_capacity, eMnd_xx_all = PurlinLine.calculate_distortional_buckling_demand_to_capacity(top_hat_purlin_line)
+    top_hat_purlin_line.flexure_shear_demand_to_capacity, eMnℓ_xx_all, eVn_all = PurlinLine.calculate_flexure_shear_demand_to_capacity(top_hat_purlin_line)        
+    top_hat_purlin_line.biaxial_bending_demand_to_capacity, eMnℓ_xx_all, eMnℓ_yy_all = PurlinLine.calculate_biaxial_bending_demand_to_capacity(top_hat_purlin_line)
+    top_hat_purlin_line.web_crippling_demand_to_capacity = PurlinLine.calculate_web_crippling_demand_to_capacity(top_hat_purlin_line)
+
+    #Add expected strengths along purlin line to data structure.
+    top_hat_purlin_line.expected_strengths = PurlinLine.ExpectedStrengths(eMnℓ_xx_all, eMnℓ_yy_all, eMnℓ_yy_free_flange_all, eMnd_xx_all, eVn_all, eBn_all)
 
     return top_hat_purlin_line
 
@@ -1825,7 +1950,7 @@ function capacity(top_hat_purlin_line)
     #Run a very small pressure to get the test going.
     top_hat_purlin_line.applied_pressure = load_sign * 10^-6
     top_hat_purlin_line = TopHatDesigner.analysis(top_hat_purlin_line)
-    max_DC = PurlinLine.find_max_DC(top_hat_purlin_line)
+    max_DC = PurlinLine.find_max_demand_to_capacity(top_hat_purlin_line)
 
     #Define initial residual.
     residual = 1.0 - abs(max_DC)
@@ -1836,7 +1961,7 @@ function capacity(top_hat_purlin_line)
         top_hat_purlin_line.applied_pressure = top_hat_purlin_line.applied_pressure + (new_pressure - top_hat_purlin_line.applied_pressure) / 2
 
         top_hat_purlin_line = TopHatDesigner.analysis(top_hat_purlin_line)
-        max_DC = PurlinLine.find_max_DC(top_hat_purlin_line)
+        max_DC = PurlinLine.find_max_demand_to_capacity(top_hat_purlin_line)
 
         residual = 1.0 - abs(max_DC)
 

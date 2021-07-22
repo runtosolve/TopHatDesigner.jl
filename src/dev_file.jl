@@ -1,6 +1,5 @@
 using TopHatDesigner
 
-
 design_code = "AISI S100-16 ASD"
 
 # Define the properties of each purlin segment along the line.
