@@ -22,6 +22,7 @@ struct Inputs
     new_deck_material_properties::NTuple{4, Float64}
     frame_flange_width::Float64
     support_locations::Vector{Float64}
+    purlin_frame_connections::String
     bridging_locations::Vector{Float64}
 
 end
@@ -355,6 +356,162 @@ function define_new_deck_bracing_properties(top_hat_purlin_line)
 
         end
 
+    elseif top_hat_purlin_line.inputs.new_deck_details[1] == "MR-24"  
+        
+        #There is no deck pullout stiffness needed here.
+        kp = 0.0
+
+        #Define the standing seam roof clip spacing.
+        standing_seam_clip_spacing = top_hat_purlin_line.inputs.new_deck_details[2]
+
+        #Define the standing seam roof clip height.
+        standing_seam_clip_height = top_hat_purlin_line.inputs.new_deck_details[3]
+
+        #Define the distance between clips as the distortional discrete bracing length.
+        Lm = standing_seam_clip_spacing
+
+        if standing_seam_clip_height == 2.25
+
+            kϕ_standing_seam = 0.200  #From Seek et al. 2021, short floating clip, not exactly MR-24, kip-in/rad/in, https://www.researchgate.net/publication/349693825_Effective_standoff_in_standing_seam_roof_systems
+            kx_standing_seam = 0.002  #From Cronin and Moen (2012), Figure 4.8  kips/in/in, https://vtechworks.lib.vt.edu/bitstream/handle/10919/18711/Flexural%20Capacity%20Prediction%20Method%20for%20an%20Open%20Web%20Joist%20Laterally%20Braced%20by%20a%20Standing%20Seam%20Roof%20System%20R10.pdf?sequence=1&isAllowed=y
+        
+        end
+
+        #Loop over all the purlin segments in the line.  
+        #Assume that there is a RoofHugger segment for every purlin segment.
+        for i = 1:num_purlin_segments
+
+            #Define the section property index associated with purlin segment i.
+            section_index = top_hat_purlin_line.inputs.segments[i][2]
+
+            #Define the material property index associated with purlin segment i.
+            material_index = top_hat_purlin_line.inputs.segments[i][3]
+
+            #Define the standing seam roof distributed clip stiffness.
+            kϕ = kϕ_standing_seam
+
+            #Define RoofHugger steel Poisson's ratio.
+            μ_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][2]
+
+            #Define the RoofHugger top flange width.
+            b_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][3]
+
+            #Define RoofHugger base metal thickness.
+            t_top_hat = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][1]
+
+            #Define out-to-out RoofHugger web depth.
+            ho = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][4]
+
+            #Define RoofHugger top flange lip length.
+            d_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][2]
+
+            #Define RoofHugger top flange lip angle from the horizon, in degrees.
+            θ_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][9]
+
+            #Apply Cee or Zee binary.   Assume the Roof Hugger behaves like a Z for this stiffness calculation.
+            CorZ = 1
+
+            #Calculate the RoofHugger distortional buckling half-wavelength.
+
+            #Calculate top flange + lip section properties.
+            Af, Jf, Ixf, Iyf, Ixyf, Cwf, xof,  hxf, hyf, yof = AISIS10016.table23131(CorZ, t_top_hat, b_top, d_top, θ_top)
+
+            #Calculate the RoofHugger distortional buckling half-wavelength.
+            Lcrd, L = AISIS10016.app23334(ho, μ_top_hat, t_top_hat, Ixf, xof, hxf, Cwf, Ixyf, Iyf, Lm)
+
+            #If Lcrd is longer than the fastener spacing, then the distortional buckling will be restrained by the deck.
+            if Lcrd >= Lm
+                kϕ_dist = kϕ
+            else
+                kϕ_dist = 0.0
+            end
+
+            #Define standing seam roof lateral stiffness.
+            kx = kx_standing_seam
+
+            #Collect all the outputs.
+            bracing_data[i] = PurlinLine.BracingData(kp, kϕ, kϕ_dist, kx, Lcrd, Lm)
+
+        end
+
+    elseif top_hat_purlin_line.inputs.new_deck_details[1] == "vertical leg standing seam"  
+        
+        #There is no deck pullout stiffness needed here.
+        kp = 0.0
+
+        #Define the standing seam roof clip spacing.
+        standing_seam_clip_spacing = top_hat_purlin_line.inputs.new_deck_details[2]
+
+        #Define the standing seam roof clip height.
+        standing_seam_clip_height = top_hat_purlin_line.inputs.new_deck_details[3]
+
+        #Define the distance between clips as the distortional discrete bracing length.
+        Lm = standing_seam_clip_spacing
+
+        if standing_seam_clip_height == 2.25
+
+            kϕ_standing_seam = 0.200  #From Seek et al. 2021, short floating clip, not exactly MR-24, kip-in/rad/in, https://www.researchgate.net/publication/349693825_Effective_standoff_in_standing_seam_roof_systems
+            kx_standing_seam = 0.002  #From Cronin and Moen (2012), Figure 4.8  kips/in/in, https://vtechworks.lib.vt.edu/bitstream/handle/10919/18711/Flexural%20Capacity%20Prediction%20Method%20for%20an%20Open%20Web%20Joist%20Laterally%20Braced%20by%20a%20Standing%20Seam%20Roof%20System%20R10.pdf?sequence=1&isAllowed=y
+        
+        end
+
+        #Loop over all the purlin segments in the line.  
+        #Assume that there is a RoofHugger segment for every purlin segment.
+        for i = 1:num_purlin_segments
+
+            #Define the section property index associated with purlin segment i.
+            section_index = top_hat_purlin_line.inputs.segments[i][2]
+
+            #Define the material property index associated with purlin segment i.
+            material_index = top_hat_purlin_line.inputs.segments[i][3]
+
+            #Define the standing seam roof distributed clip stiffness.
+            kϕ = kϕ_standing_seam
+
+            #Define RoofHugger steel Poisson's ratio.
+            μ_top_hat = top_hat_purlin_line.inputs.top_hat_material_properties[material_index][2]
+
+            #Define the RoofHugger top flange width.
+            b_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][3]
+
+            #Define RoofHugger base metal thickness.
+            t_top_hat = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][1]
+
+            #Define out-to-out RoofHugger web depth.
+            ho = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][4]
+
+            #Define RoofHugger top flange lip length.
+            d_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][2]
+
+            #Define RoofHugger top flange lip angle from the horizon, in degrees.
+            θ_top = top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[section_index][9]
+
+            #Apply Cee or Zee binary.   Assume the Roof Hugger behaves like a Z for this stiffness calculation.
+            CorZ = 1
+
+            #Calculate the RoofHugger distortional buckling half-wavelength.
+
+            #Calculate top flange + lip section properties.
+            Af, Jf, Ixf, Iyf, Ixyf, Cwf, xof,  hxf, hyf, yof = AISIS10016.table23131(CorZ, t_top_hat, b_top, d_top, θ_top)
+
+            #Calculate the RoofHugger distortional buckling half-wavelength.
+            Lcrd, L = AISIS10016.app23334(ho, μ_top_hat, t_top_hat, Ixf, xof, hxf, Cwf, Ixyf, Iyf, Lm)
+
+            #If Lcrd is longer than the fastener spacing, then the distortional buckling will be restrained by the deck.
+            if Lcrd >= Lm
+                kϕ_dist = kϕ
+            else
+                kϕ_dist = 0.0
+            end
+
+            #Define standing seam roof lateral stiffness.
+            kx = kx_standing_seam
+
+            #Collect all the outputs.
+            bracing_data[i] = PurlinLine.BracingData(kp, kϕ, kϕ_dist, kx, Lcrd, Lm)
+
+        end
+
     elseif top_hat_purlin_line.inputs.new_deck_details[1] == "no deck"
               
         #Loop over all the purlin segments in the line.  
@@ -662,7 +819,19 @@ function generate_top_hat_net_section_purlin_geometry(top_hat_purlin_cross_secti
 
     #Find all cross-section nodes that are in the TopHat punchout region.
     top_hat_node_geometry = top_hat_cross_section_data.node_geometry[:,1:2]
-    hole_index = findall(x->x<top_hat_punch_out_dimensions[2], top_hat_node_geometry[:,2])
+    hole_index_y = findall(x->x<=top_hat_punch_out_dimensions[2], top_hat_node_geometry[:,2])
+
+    #Find all the nodes to the left and right of the TopHat webs.
+    n_top_hat_web_minus = top_hat_cross_section_data.n[1] + top_hat_cross_section_data.n[2] + top_hat_cross_section_data.n_radius[1] + top_hat_cross_section_data.n_radius[2] + floor(Int, top_hat_cross_section_data.n[3]/2)
+
+    n_top_hat_web_plus = sum(top_hat_cross_section_data.n[1:4]) + sum(top_hat_cross_section_data.n_radius[1:4]) + floor(Int, top_hat_cross_section_data.n[5]/2)
+
+    top_hat_web_x_minus_location = top_hat_node_geometry[n_top_hat_web_minus, 1]
+    top_hat_web_x_plus_location = top_hat_node_geometry[n_top_hat_web_plus, 1]
+    hole_index_x = findall(x->(x<=top_hat_web_x_plus_location) & ((x>=top_hat_web_x_minus_location)), top_hat_node_geometry[:,1])
+
+    #These are the nodes to be removed.
+    hole_index = sort(intersect(hole_index_y, hole_index_x))
 
     #Shift the cross-section nodes to match up with the punch out dimensions.
     h_purlin = purlin_cross_section_dimensions[5]
@@ -675,7 +844,7 @@ function generate_top_hat_net_section_purlin_geometry(top_hat_purlin_cross_secti
 
     #Remove elements at punchouts.
     top_hat_purlin_element_definitions = top_hat_purlin_cross_section_data.element_definitions
-    remove_hole_elements_index = hole_index[1:end] .+ num_purlin_nodes .- 1
+    remove_hole_elements_index = hole_index[1:end-1] .+ num_purlin_nodes .- 1
     top_hat_purlin_element_definitions = top_hat_purlin_element_definitions[setdiff(1:end, remove_hole_elements_index), :]
 
     #Update nodal connectivity.
@@ -1449,13 +1618,13 @@ function calculate_shear_strength(top_hat_purlin_line)
 end
 
 
-function define(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, deck_details, deck_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, bridging_locations)
+function define(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, deck_details, deck_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, purlin_frame_connections, bridging_locations)
 
     #Create the TopHatDesigner data structure.
     top_hat_purlin_line = TopHatDesignerObject()
 
     #Add TopHatDesigner user inputs to data structure.
-    top_hat_purlin_line.inputs = TopHatDesigner.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, bridging_locations)
+    top_hat_purlin_line.inputs = TopHatDesigner.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, top_hat_cross_section_dimensions, top_hat_punch_out_dimensions, purlin_material_properties, top_hat_material_properties, new_deck_details, new_deck_material_properties, frame_flange_width, support_locations, purlin_frame_connections, bridging_locations)
 
     #Define TopHat cross-section data including nodal geometry, cross-section discretization and section properties.
     n = [4, 4, 6, 4, 6, 4, 4]
@@ -1466,7 +1635,7 @@ function define(design_code, segments, spacing, roof_slope, purlin_cross_section
     purlin_line = PurlinLine.PurlinLineObject()
 
     #Capture PurlinLine inputs.
-    purlin_line.inputs = PurlinLine.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, purlin_material_properties, deck_details, deck_material_properties, frame_flange_width, support_locations, bridging_locations)
+    purlin_line.inputs = PurlinLine.Inputs(design_code, segments, spacing, roof_slope, purlin_cross_section_dimensions, purlin_material_properties, deck_details, deck_material_properties, frame_flange_width, support_locations, purlin_frame_connections, bridging_locations)
 
     #Define the purlin cross-section discretization and calculate section properties.
     n = [4, 4, 5, 4, 4]
