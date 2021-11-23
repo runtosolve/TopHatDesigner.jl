@@ -1835,9 +1835,31 @@ function thin_walled_beam_interface(top_hat_purlin_line)
     ay_kx[2] = Mesh.create_line_element_property_array(member_definitions, m, dz, spring_location_segment, 3, 1)
 
 
-    #Define purlin line support locations for ThinWalledBeam.
-    #location where u=v=ϕ=0
-    supports = top_hat_purlin_line.inputs.support_locations
+    # #Define purlin line support locations for ThinWalledBeam.
+    # #location where u=v=ϕ=0
+    # supports = top_hat_purlin_line.inputs.support_locations
+
+
+    #Define purlin line support locations for ThinWalledBeam.  If there are anti-roll clips assume purlin is fixed in rotation at a frame support. If the purlins are connected to the frame just at the purlin bottom flange, assumed the purlin is free to rotate at the support.
+    
+    num_supports = length(top_hat_purlin_line.inputs.support_locations)
+
+    supports = Vector{Tuple{Float64, String, String, String}}(undef, num_supports)
+
+    for i = 1:num_supports
+
+        if top_hat_purlin_line.inputs.purlin_frame_connections == "anti-roll clip"
+            
+            supports[i] = (top_hat_purlin_line.inputs.support_locations[i], "fixed", "fixed", "fixed")
+        
+        elseif top_hat_purlin_line.inputs.purlin_frame_connections == "bottom flange connection"
+
+            supports[i] = (top_hat_purlin_line.inputs.support_locations[i], "fixed", "fixed", "free")
+
+        end
+
+    end
+
 
     #Define purlin line end boundary conditions for ThinWalledBeam.
 
@@ -1848,14 +1870,14 @@ function thin_walled_beam_interface(top_hat_purlin_line)
     #type=1 u''=v''=ϕ''=0 (simply supported), type=2 u'=v'=ϕ'=0  (fixed), type=3 u''=v''=ϕ''=u'''=v'''=ϕ'''=0 (free end, e.g., a cantilever)
 
     #z=0 (left) end
-    if supports[1] == 0.0
+    if supports[1][1] == 0.0
         end_boundary_conditions[1] = 1 #pin
     else
         end_boundary_conditions[1] = 3  #cantilever
     end
 
     #z=purlin_line_length (right) end
-    if supports[end] == purlin_line_length
+    if supports[end][1] == purlin_line_length
         end_boundary_conditions[2] = 1
     else
         end_boundary_conditions[2] = 3  #cantilever
@@ -2083,6 +2105,10 @@ function analysis(top_hat_purlin_line)
     #Calculate internal forces in the free flange.
     Mxx, Myy, Vxx, Vyy, T, B = PurlinLine.calculate_internal_forces(top_hat_purlin_line.free_flange_model)
 
+    #Calculate the bearing reactions.  Assume here that the TopHat will never control for web crippling, only the purlin.
+    Fyy = PurlinLine.calculate_support_reactions(top_hat_purlin_line.inputs.support_locations, top_hat_purlin_line.model.z, top_hat_purlin_line.internal_forces.Vyy)
+    top_hat_purlin_line.support_reactions = PurlinLine.Reactions(Fyy)
+
     #Add free flange internal forces to data structure.
     top_hat_purlin_line.free_flange_internal_forces = PurlinLine.InternalForceData(Pf, Mxx, Myy, Vxx, Vyy, T, B)
 
@@ -2093,7 +2119,12 @@ function analysis(top_hat_purlin_line)
     top_hat_purlin_line.distortional_demand_to_capacity, eMnd_xx_all = PurlinLine.calculate_distortional_buckling_demand_to_capacity(top_hat_purlin_line)
     top_hat_purlin_line.flexure_shear_demand_to_capacity, eMnℓ_xx_all, eVn_all = PurlinLine.calculate_flexure_shear_demand_to_capacity(top_hat_purlin_line)        
     top_hat_purlin_line.biaxial_bending_demand_to_capacity, eMnℓ_xx_all, eMnℓ_yy_all = PurlinLine.calculate_biaxial_bending_demand_to_capacity(top_hat_purlin_line)
-    top_hat_purlin_line.web_crippling_demand_to_capacity = PurlinLine.calculate_web_crippling_demand_to_capacity(top_hat_purlin_line)
+    
+    #Unpack purlin web crippling strength.
+    ePn = [top_hat_purlin_line.web_crippling[i].ePn for i = 1:length(top_hat_purlin_line.web_crippling)]
+    top_hat_purlin_line.web_crippling_demand_to_capacity = PurlinLine.calculate_web_crippling_demand_to_capacity(top_hat_purlin_line.inputs.support_locations, top_hat_purlin_line.model.z, top_hat_purlin_line.internal_forces.Vyy, top_hat_purlin_line.support_reactions.Fyy, top_hat_purlin_line.inputs.purlin_frame_connections, ePn)
+    
+    # top_hat_purlin_line.web_crippling_demand_to_capacity = PurlinLine.calculate_web_crippling_demand_to_capacity(top_hat_purlin_line)
 
     #Add expected strengths along purlin line to data structure.
     top_hat_purlin_line.expected_strengths = PurlinLine.ExpectedStrengths(eMnℓ_xx_all, eMnℓ_yy_all, eMnℓ_yy_free_flange_all, eMnd_xx_all, eVn_all, eBn_all)
