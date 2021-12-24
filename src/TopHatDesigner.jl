@@ -7,6 +7,10 @@ using NumericalIntegration
 
 export define, analysis, capacity
 
+export UI
+include("UI.jl")
+using .UI
+
 struct Inputs
 
     design_code::String
