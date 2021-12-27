@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.17.2
+# v0.17.4
 
 using Markdown
 using InteractiveUtils
@@ -14,29 +14,49 @@ macro bind(def, element)
     end
 end
 
-# ╔═╡ e37326d5-d9c8-4512-960f-82d912c00273
+# ╔═╡ f07ea655-9b82-479d-81dd-b53e67fbdd1a
 begin
-    import Pkg
+   import Pkg
     Pkg.activate()
 
     using PlutoUI, Images, Dates, CSV, DataFrames, PurlinLine, TopHatDesigner, StructuresKit
 
-	purlin_data = CSV.read("/Volumes/GoogleDrive/Shared drives/RunToSolve/Projects/TopHat Framing/TopHatDesigner_UI/database/Purlins.csv",
+	 OS = "Windows"
+
+	 if OS == "Windows"
+
+		purlin_data = CSV.read(raw"database\Purlins.csv",
                              DataFrame);
 
-	top_hat_data = CSV.read("/Volumes/GoogleDrive/Shared drives/RunToSolve/Projects/TopHat Framing/TopHatDesigner_UI/database/TopHats.csv",
+		top_hat_data = CSV.read(raw"database\TopHats.csv",
                              DataFrame);
 
-	existing_deck_data = CSV.read("/Volumes/GoogleDrive/Shared drives/RunToSolve/Projects/TopHat Framing/TopHatDesigner_UI/database/Existing_Deck.csv",
+		existing_deck_data = CSV.read(raw"database\Existing_Deck.csv",
                              DataFrame);
 
-	new_deck_data = CSV.read("/Volumes/GoogleDrive/Shared drives/RunToSolve/Projects/TopHat Framing/TopHatDesigner_UI/database/New_Deck.csv",
+		new_deck_data = CSV.read(raw"database\New_Deck.csv",
                              DataFrame);
-	
+
+	elseif OS == "Mac"
+
+			purlin_data = CSV.read("database/Purlins.csv",
+                             DataFrame);
+
+		top_hat_data = CSV.read("database/TopHats.csv",
+                             DataFrame);
+
+		existing_deck_data = CSV.read("database/Existing_Deck.csv",
+                             DataFrame);
+
+		new_deck_data = CSV.read("database/New_Deck.csv",
+                             DataFrame);
+
+	end
+
 end;
 
-# ╔═╡ 2a2939b5-b0de-4b51-9a14-3fdf5d439b93
-load("/Volumes/GoogleDrive/Shared drives/RunToSolve/Projects/TopHat Framing/TopHatDesigner_UI/tophat-horz.png")
+# ╔═╡ 83c92777-b410-4a95-9ba7-54d725e2ed9b
+load("tophat-horz.png")
 
 # ╔═╡ c2353bb3-ee8c-4d55-9447-470427c22b06
 @bind project_details TextField((30,5); default="Project details")
@@ -52,7 +72,7 @@ purlin_spans = (25.0)  #ft
 
 # ╔═╡ 1d9b00aa-7f6b-4f7e-9da8-e1f0b1ace647
 md"""
-Purlin sizes $(@bind purlin_type_1 Select(["none"; purlin_data[:, 1]]))
+Purlin sizes $(@bind purlin_type_1 Select(["Z8x2.5 054"; purlin_data[:, 1]]))
 $(@bind purlin_type_2 Select(["none"; purlin_data[:, 1]]))
 """
 
@@ -131,8 +151,8 @@ md"**Retrofitted roof system downward (gravity) strength = $(round(top_hat_purli
 md"**Retrofitted roof system uplift strength = $(round(top_hat_purlin_line_uplift.applied_pressure*1000*144, digits=1)) psf**"
 
 # ╔═╡ Cell order:
-# ╟─e37326d5-d9c8-4512-960f-82d912c00273
-# ╟─2a2939b5-b0de-4b51-9a14-3fdf5d439b93
+# ╟─f07ea655-9b82-479d-81dd-b53e67fbdd1a
+# ╟─83c92777-b410-4a95-9ba7-54d725e2ed9b
 # ╟─c2353bb3-ee8c-4d55-9447-470427c22b06
 # ╟─96f90537-0b4d-4d48-927b-01492e3789ef
 # ╟─99299f0c-30ee-4807-a7a2-d4509b4680ab
