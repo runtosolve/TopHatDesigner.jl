@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.17.2
+# v0.17.4
 
 using Markdown
 using InteractiveUtils
@@ -131,7 +131,7 @@ md"**Retrofitted roof system downward (gravity) strength = $(round(top_hat_purli
 md"**Retrofitted roof system uplift strength = $(round(top_hat_purlin_line_uplift.applied_pressure*1000*144, digits=1)) psf**"
 
 # ╔═╡ Cell order:
-# ╟─e37326d5-d9c8-4512-960f-82d912c00273
+# ╠═e37326d5-d9c8-4512-960f-82d912c00273
 # ╟─2a2939b5-b0de-4b51-9a14-3fdf5d439b93
 # ╟─c2353bb3-ee8c-4d55-9447-470427c22b06
 # ╟─96f90537-0b4d-4d48-927b-01492e3789ef
