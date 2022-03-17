@@ -63,7 +63,7 @@ function define_lap_segments(purlin_laps, purlin_size_span_assignment)
 
 	num_interior_supports = trunc(Int, length(purlin_laps)/2)
 
-	lap_segments = Array{Tuple{Float64, Int64, Int64}, 1}(undef, num_interior_supports * 2)
+	lap_segments = Array{Tuple{Float64, Float64, Int64, Int64}, 1}(undef, num_interior_supports * 2)
 
 	lap_section_types = define_lap_section_types(purlin_size_span_assignment)
 
@@ -71,8 +71,8 @@ function define_lap_segments(purlin_laps, purlin_size_span_assignment)
 
 	for i = 1:num_interior_supports
 
-		lap_segments[2*i - 1] = (purlin_laps[2*i - 1]*12.0, lap_section_index[i], 1)
-		lap_segments[2*i] = (purlin_laps[2*i]*12.0, lap_section_index[i], 1)
+		lap_segments[2*i - 1] = (purlin_laps[2*i - 1]*12.0, (purlin_laps[2*i - 1]*12.0)/6, lap_section_index[i], 1)
+		lap_segments[2*i] = (purlin_laps[2*i]*12.0, (purlin_laps[2*i]*12.0)/6, lap_section_index[i], 1)
 
 	end
 
@@ -86,7 +86,7 @@ function define_purlin_line_segments(span_segments, lap_segments)
 	
 	num_purlin_line_segments = length(span_segments) + length(lap_segments)
 
-	purlin_line_segments = Array{Tuple{Float64, Int64, Int64}, 1}(undef, num_purlin_line_segments)
+	purlin_line_segments = Array{Tuple{Float64, Float64, Int64, Int64}, 1}(undef, num_purlin_line_segments)
 
 	segment_index = 1
 
@@ -129,7 +129,7 @@ end
 	
 function define_purlin_line_cross_section_dimensions(purlin_line_segments, lap_section_types, purlin_data, purlin_type_1, purlin_type_2)
 
-	purlin_line_cross_section_indices = [purlin_line_segments[i][2] for i=1:length(purlin_line_segments)]
+	purlin_line_cross_section_indices = [purlin_line_segments[i][3] for i=1:length(purlin_line_segments)]
 
 	unique_purlin_line_cross_section_indices = sort(unique(purlin_line_cross_section_indices))
 
@@ -218,7 +218,7 @@ function define_span_segments(purlin_spans, purlin_laps, purlin_size_span_assign
 
 	num_spans = length(purlin_spans)
 
-	span_segments = Array{Tuple{Float64, Int64, Int64}, 1}(undef, num_spans)
+	span_segments = Array{Tuple{Float64, Float64, Int64, Int64}, 1}(undef, num_spans)
 
 	lap_index = 1
 
@@ -236,21 +236,21 @@ function define_span_segments(purlin_spans, purlin_laps, purlin_size_span_assign
 
 			end
 			
-			span_segments[i] = (segment_length, purlin_size_span_assignment[i], 1)
+			span_segments[i] = (segment_length, segment_length/18, purlin_size_span_assignment[i], 1)
 	
 			lap_index = lap_index + 1
 	
 		elseif (i > 1) & (i != num_spans) #interior span
 	
 			segment_length = purlin_spans[i]*12 - purlin_laps[lap_index]*12 - purlin_laps[lap_index+1]*12
-			span_segments[i] = (segment_length, purlin_size_span_assignment[i], 1)
+			span_segments[i] = (segment_length, segment_length/18, purlin_size_span_assignment[i], 1)
 	
 			lap_index = lap_index + 2
 	
 		elseif i==num_spans #end span
 	
 			segment_length = purlin_spans[i]*12 - purlin_laps[lap_index]*12
-			span_segments[i] = (segment_length, purlin_size_span_assignment[i], 1)
+			span_segments[i] = (segment_length, segment_length/18, purlin_size_span_assignment[i], 1)
 	
 		end
 
