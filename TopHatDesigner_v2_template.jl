@@ -19,39 +19,39 @@ begin
    import Pkg
     Pkg.activate()
 
-    using PlutoUI, Images, Dates, CSV, DataFrames, PurlinLine, TopHatDesigner, StructuresKit
+    using PlutoUI, Images, Dates, CSV, DataFrames, TopHatDesigner, StructuresKit
 
-	 OS = "Mac"
+	#  OS = "Mac"
 
-	 if OS == "Windows"
+	#  if OS == "Windows"
 
-		purlin_data = CSV.read(raw"database\Purlins.csv",
-                             DataFrame);
+	# 	purlin_data = CSV.read(raw"database\Purlins.csv",
+ #                             DataFrame);
 
-		top_hat_data = CSV.read(raw"database\TopHats.csv",
-                             DataFrame);
+	# 	top_hat_data = CSV.read(raw"database\TopHats.csv",
+ #                             DataFrame);
 
-		existing_deck_data = CSV.read(raw"database\Existing_Deck.csv",
-                             DataFrame);
+	# 	existing_deck_data = CSV.read(raw"database\Existing_Deck.csv",
+ #                             DataFrame);
 
-		new_deck_data = CSV.read(raw"database\New_Deck.csv",
-                             DataFrame);
+	# 	new_deck_data = CSV.read(raw"database\New_Deck.csv",
+ #                             DataFrame);
 
-	elseif OS == "Mac"
+	# elseif OS == "Mac"
 
-			purlin_data = CSV.read("database/Purlins.csv",
-                             DataFrame);
+	# 		purlin_data = CSV.read("database/Purlins.csv",
+ #                             DataFrame);
 
-		top_hat_data = CSV.read("database/TopHats.csv",
-                             DataFrame);
+	# 	top_hat_data = CSV.read("database/TopHats.csv",
+ #                             DataFrame);
 
-		existing_deck_data = CSV.read("database/Existing_Deck.csv",
-                             DataFrame);
+	# 	existing_deck_data = CSV.read("database/Existing_Deck.csv",
+ #                             DataFrame);
 
-		new_deck_data = CSV.read("database/New_Deck.csv",
-                             DataFrame);
+	# 	new_deck_data = CSV.read("database/New_Deck.csv",
+ #                             DataFrame);
 
-	end
+	# end
 
 end;
 
