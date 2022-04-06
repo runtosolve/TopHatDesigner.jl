@@ -1,6 +1,6 @@
 module TopHatDesigner
 
-using PurlinLine, CUFSM, SectionProperties, NumericalIntegration, ThinWalledBeam, ThinWalledBeamColumn, S100AISI
+using PurlinLine, CUFSM, SectionProperties, NumericalIntegration, ThinWalledBeam, ThinWalledBeamColumn, S100AISI, ScrewConnections
 
 export define, analysis, capacity
 
@@ -343,7 +343,7 @@ function define_new_deck_bracing_properties(top_hat_purlin_line)
             CorZ = 1
       
             #Calculate the rotational stiffness provided to each TopHat flange by the screw-fastened connection between the deck and the TopHat.  It is assumed that the deck flexural stiffness is much higher than the connection stiffness.
-            kϕ = Connections.cfs_rot_screwfastened_k(b_top, c, deck_top_hat_fastener_spacing, t_top_hat, kp, E_top_hat, CorZ)
+            kϕ = ScrewConnections.cfs_rot_screwfastened_k(b_top, c, deck_top_hat_fastener_spacing, t_top_hat, kp, E_top_hat, CorZ)
 
             #Calculate the TopHat distortional buckling half-wavelength.
 
@@ -363,7 +363,7 @@ function define_new_deck_bracing_properties(top_hat_purlin_line)
             #Approximate the lateral stiffness provided to the top of each TopHat flange by the screw-fastened connection between the deck and the TopHat.
 
             #Calculate the stiffness of a single screw-fastened connection.
-            Ka, ψ, α, β, Ke = Connections.cfs_trans_screwfastened_k(t_roof_deck, t_top_hat, E_roof_deck, E_top_hat, Fss, Fu_roof_deck, Fu_top_hat, deck_top_hat_fastener_diameter)
+            Ka, ψ, α, β, Ke = ScrewConnections.cfs_trans_screwfastened_k(t_roof_deck, t_top_hat, E_roof_deck, E_top_hat, Fss, Fu_roof_deck, Fu_top_hat, deck_top_hat_fastener_diameter)
 
             #Convert the discrete stiffness to a distributed stiffness, divide by the fastener spacing.
             kx = Ke / deck_top_hat_fastener_spacing

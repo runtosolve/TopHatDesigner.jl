@@ -17,41 +17,17 @@ end
 # ╔═╡ f9d65a36-1708-4a60-b91d-c23fdef2788b
 begin
    import Pkg
-    Pkg.activate()
+    Pkg.activate(".")
 
-    using PlutoUI, Images, Dates, CSV, DataFrames, TopHatDesigner, StructuresKit
+	using TopHatDesigner, PlutoUI, Images, Dates, CSV, DataFrames, UrlDownload
 
-	#  OS = "Mac"
+	purlin_data = DataFrame(urldownload("https://raw.githubusercontent.com/runtosolve/Files/main/TH/database/Purlins.csv"))
 
-	#  if OS == "Windows"
+	top_hat_data = DataFrame(urldownload("https://raw.githubusercontent.com/runtosolve/Files/main/TH/database/TopHats.csv"))
 
-	# 	purlin_data = CSV.read(raw"database\Purlins.csv",
- #                             DataFrame);
+	existing_deck_data = DataFrame(urldownload("https://raw.githubusercontent.com/runtosolve/Files/main/TH/database/Existing_Deck.csv"))
 
-	# 	top_hat_data = CSV.read(raw"database\TopHats.csv",
- #                             DataFrame);
-
-	# 	existing_deck_data = CSV.read(raw"database\Existing_Deck.csv",
- #                             DataFrame);
-
-	# 	new_deck_data = CSV.read(raw"database\New_Deck.csv",
- #                             DataFrame);
-
-	# elseif OS == "Mac"
-
-	# 		purlin_data = CSV.read("database/Purlins.csv",
- #                             DataFrame);
-
-	# 	top_hat_data = CSV.read("database/TopHats.csv",
- #                             DataFrame);
-
-	# 	existing_deck_data = CSV.read("database/Existing_Deck.csv",
- #                             DataFrame);
-
-	# 	new_deck_data = CSV.read("database/New_Deck.csv",
- #                             DataFrame);
-
-	# end
+	new_deck_data = DataFrame(urldownload("https://raw.githubusercontent.com/runtosolve/Files/main/TH/database/New_Deck.csv"))
 
 end;
 
@@ -74,19 +50,19 @@ $(@bind purlin_type_2 Select(["none"; purlin_data[:, 1]]))
 """
 
 # ╔═╡ 5d180e53-27aa-4bb2-9ab1-81cc2737ab3b
-purlin_spans = (26.0, 27.0, 27.0, 26.0)  #ft
+purlin_spans = (25.0)  #ft
 
 # ╔═╡ 111ad395-5261-41e3-bd71-0a08ebe97119
-purlin_size_span_assignment = (1, 1, 1, 1)
+purlin_size_span_assignment = (1)
 
 # ╔═╡ 710a97bb-6cd1-457c-a352-23428408de55
-purlin_laps = (2.0, 2.0, 2.0, 2.0, 2.0, 2.0)
+purlin_laps = ()
 
 # ╔═╡ dde7f4c2-2212-4244-a78b-8fe12b6c8d0e
 purlin_spacing = 5.0  #ft
 
 # ╔═╡ 1a1727db-c828-4317-8ccd-2be491ee48c0
-frame_flange_width = 16.0  #in
+frame_flange_width = 10.0  #in
 
 # ╔═╡ 9eebfba0-7913-40fd-bda5-b1d1178c741a
 roof_slope = 1/12
@@ -100,15 +76,8 @@ md" ## Calculate existing roof system strength."
 # ╔═╡ 45651a24-ebc3-4ab4-b7a9-ea5a1ab7fa7f
 purlin_line, purlin_line_uplift = UI.existing_roof_UI_mapper(purlin_spans, purlin_laps, purlin_spacing, roof_slope, purlin_data, existing_deck_type, existing_deck_data, frame_flange_width, purlin_type_1, purlin_type_2, purlin_size_span_assignment);
 
-# ╔═╡ 40af7c07-ff81-4617-a220-9db2435247f2
-begin
-
-	xlims=(-9.0, 9.0);
-	ylims = (0.0, 18.0);
-	markershape = :none;
-	StructuresKit.Visualize.show_multi_branch_cross_section(purlin_line.cross_section_data[1].node_geometry[:,1], purlin_line.cross_section_data[1].node_geometry[:,2], purlin_line.cross_section_data[1].element_definitions, markershape, xlims, ylims)
-
-end
+# ╔═╡ 32fbe54d-b709-4f80-bf10-913abcd63e41
+UI.plot_purlin_geometry(purlin_line.inputs.cross_section_dimensions[1][2], purlin_line.cross_section_data[1].node_geometry[:,1], purlin_line.cross_section_data[1].node_geometry[:,2], roof_slope)
 
 # ╔═╡ d2246077-5cf8-4f00-81af-9e5922bec619
 md"**Existing roof system downward (gravity) strength = $(round(purlin_line.applied_pressure*1000*144, digits=1)) psf**"
@@ -135,17 +104,11 @@ md" New roof deck type $(@bind new_deck_type Select(new_deck_data[:, 1]))"
 # ╔═╡ edb7ac4d-3b87-4c73-bb3a-97711bc9c0dd
 top_hat_purlin_line, top_hat_purlin_line_uplift = UI.retrofit_UI_mapper(purlin_line, top_hat_data, top_hat_type, existing_deck_type, existing_deck_data, new_deck_type, new_deck_data);
 
-# ╔═╡ 828e6235-3b5f-47f0-a004-62b00bf14ff9
-begin
-	StructuresKit.Visualize.show_multi_branch_cross_section(top_hat_purlin_line.top_hat_purlin_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.top_hat_purlin_cross_section_data[1].node_geometry[:,2], top_hat_purlin_line.top_hat_purlin_cross_section_data[1].element_definitions, markershape, xlims, ylims)
+# ╔═╡ 444cb829-2b66-48a8-a052-b16f5f5529b8
+UI.plot_top_hat_purlin_geometry(top_hat_purlin_line.inputs.top_hat_cross_section_dimensions[1][1], top_hat_purlin_line.purlin_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.purlin_cross_section_data[1].node_geometry[:,2], roof_slope, top_hat_purlin_line.top_hat_purlin_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.top_hat_purlin_cross_section_data[1].node_geometry[:,2], top_hat_purlin_line.top_hat_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.top_hat_cross_section_data[1].node_geometry[:,2])
 
-end
-
-# ╔═╡ ba972b91-ab02-42a7-963a-ee5587122def
-begin
-	StructuresKit.Visualize.show_multi_branch_cross_section(top_hat_purlin_line.top_hat_purlin_net_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.top_hat_purlin_net_cross_section_data[1].node_geometry[:,2], top_hat_purlin_line.top_hat_purlin_net_cross_section_data[1].element_definitions, markershape, xlims, ylims)
-
-end
+# ╔═╡ 680fdccf-76fc-451e-8caa-bdb6ff359818
+UI.plot_net_section_top_hat_purlin_geometry(purlin_line.inputs.cross_section_dimensions[1][2], top_hat_purlin_line.purlin_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.purlin_cross_section_data[1].node_geometry[:,2], roof_slope, top_hat_purlin_line.top_hat_purlin_net_cross_section_data[1].node_geometry[:,1], top_hat_purlin_line.top_hat_purlin_net_cross_section_data[1].node_geometry[:,2])
 
 # ╔═╡ 4d47c72c-52a9-4caa-9516-446296e73443
 md" ## Calculate retrofitted roof system strength."
@@ -176,7 +139,7 @@ top_hat_purlin_line_uplift
 # ╠═1a1727db-c828-4317-8ccd-2be491ee48c0
 # ╠═9eebfba0-7913-40fd-bda5-b1d1178c741a
 # ╟─e20e6735-ae8a-4ae0-99bb-f563a602afbc
-# ╟─40af7c07-ff81-4617-a220-9db2435247f2
+# ╟─32fbe54d-b709-4f80-bf10-913abcd63e41
 # ╟─dd6bbcfe-b781-4bf5-8485-1c4b25380ebc
 # ╟─45651a24-ebc3-4ab4-b7a9-ea5a1ab7fa7f
 # ╟─d2246077-5cf8-4f00-81af-9e5922bec619
@@ -186,9 +149,9 @@ top_hat_purlin_line_uplift
 # ╟─f67cf06d-2fe6-401f-ab71-1ecea9aa373f
 # ╟─6cebdfda-7d1c-4df6-9e64-b6afad1c7f6d
 # ╟─bfac357a-4b13-471e-84e8-edf4272065ba
-# ╟─828e6235-3b5f-47f0-a004-62b00bf14ff9
-# ╟─ba972b91-ab02-42a7-963a-ee5587122def
 # ╟─edb7ac4d-3b87-4c73-bb3a-97711bc9c0dd
+# ╟─444cb829-2b66-48a8-a052-b16f5f5529b8
+# ╟─680fdccf-76fc-451e-8caa-bdb6ff359818
 # ╟─4d47c72c-52a9-4caa-9516-446296e73443
 # ╟─8fe61b54-e9e1-4aa6-be50-b0812d86a1cf
 # ╟─af2fc099-ded8-430f-bd28-a82af438a280
