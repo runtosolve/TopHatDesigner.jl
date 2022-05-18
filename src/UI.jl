@@ -1,6 +1,6 @@
 module UI
 
-using PurlinLine, Plots, SectionProperties, Geometry
+using PurlinLine, Plots, LinesCurvesNodes, CrossSection
 
 using ..TopHatDesigner
 
@@ -380,27 +380,23 @@ function generate_purlin_geometry(t, xcoords_center, ycoords_center, roof_slope)
 
 	center_nodes = [xcoords_center ycoords_center zeros(Float64, length(xcoords_center))]
 
-	center_nodes_rotated = Geometry.rotate_nodes(center_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	center_nodes_rotated = LinesCurvesNodes.rotate_nodes(center_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
 	
-		#Calculate surface normals.
-	closed_or_open = 1
-	unitnormals = SectionProperties.surface_normals(xcoords_center, ycoords_center, closed_or_open)
-
+	cross_section = [[xcoords_center[i], ycoords_center[i]] for i in eachindex(xcoords_center)]
 	
-	nodenormals = SectionProperties.avg_node_normals(unitnormals, closed_or_open)
-
-
-	xcoords_out, ycoords_out = SectionProperties.xycoords_along_normal(xcoords_center, ycoords_center, nodenormals, t/2)
-
-	out_nodes = [xcoords_out ycoords_out zeros(Float64, length(xcoords_center))]
-
-	out_nodes_rotated = Geometry.rotate_nodes(out_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
-
-	xcoords_in, ycoords_in = SectionProperties.xycoords_along_normal(xcoords_center, ycoords_center, nodenormals, -t/2)
-
-	in_nodes = [xcoords_in ycoords_in zeros(Float64, length(xcoords_center))]
-
-	in_nodes_rotated = Geometry.rotate_nodes(in_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	unit_node_normals = CrossSection.Tools.calculate_cross_section_unit_node_normals(cross_section)
+	
+	outside = CrossSection.Tools.get_coords_along_node_normals(cross_section, unit_node_normals, t/2)
+	X = [outside[i][1] for i in eachindex(outside)]
+	Y = [outside[i][2] for i in eachindex(outside)]
+	out_nodes = [X Y zeros(Float64, length(xcoords_center))]
+	out_nodes_rotated = LinesCurvesNodes.rotate_nodes(out_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	
+	inside = CrossSection.Tools.get_coords_along_node_normals(cross_section, unit_node_normals, -t/2)
+	X = [inside[i][1] for i in eachindex(inside)]
+	Y = [inside[i][2] for i in eachindex(inside)]
+	in_nodes = [X Y zeros(Float64, length(xcoords_center))]
+	in_nodes_rotated = LinesCurvesNodes.rotate_nodes(in_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
 
 	return center_nodes_rotated, out_nodes_rotated, in_nodes_rotated
 	
@@ -444,7 +440,7 @@ function plot_top_hat_purlin_geometry(t, xcoords_center_purlin, ycoords_center_p
 end	
 
 
-function plot_net_section_top_hat_purlin_geometry(t, xcoords_center_purlin, ycoords_center_purlin, roof_slope, xcoords_center_top_hat_purlin, ycoords_center_top_hat_purlin)
+function plot_net_section_top_hat_purlin_geometry(t, xcoords_center_purlin, ycoords_center_purlin, xcoords_center_top_hat, ycoords_center_top_hat, roof_slope, xcoords_center_top_hat_purlin, ycoords_center_top_hat_purlin, net_top_hat_purlin_node_geometry)
 
 	center_nodes_purlin, out_nodes_purlin, in_nodes_purlin = generate_purlin_geometry(t, xcoords_center_purlin, ycoords_center_purlin, roof_slope)
 
@@ -454,23 +450,32 @@ function plot_net_section_top_hat_purlin_geometry(t, xcoords_center_purlin, ycoo
 
 	plot!(in_nodes_purlin[:,1], in_nodes_purlin[:,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
 
-	Δx = 0.0
-	Δy = 0.0
+	top_hat_bottom_flange_centerline_node = 47
+	Δx = xcoords_center_top_hat_purlin[top_hat_bottom_flange_centerline_node]
+	Δy = ycoords_center_top_hat_purlin[top_hat_bottom_flange_centerline_node]
 	Δz = 0.0
 	
-	center_nodes_top_hat, out_nodes_top_hat, in_nodes_top_hat = generate_top_hat_geometry(t, xcoords_center_top_hat_purlin[27:end], ycoords_center_top_hat_purlin[27:end], roof_slope, Δx, Δy, Δz)
+	center_nodes_top_hat, out_nodes_top_hat, in_nodes_top_hat = generate_top_hat_geometry(t, xcoords_center_top_hat, ycoords_center_top_hat, roof_slope, Δx, Δy, Δz)
 
-	plot!(center_nodes_top_hat[1:15,1], center_nodes_top_hat[1:15,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	num_top_hat_purlin_net_section_nodes = size(net_top_hat_purlin_node_geometry, 1)
 
-	plot!(out_nodes_top_hat[1:15,1], out_nodes_top_hat[1:15,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	num_purlin_nodes = size(xcoords_center_purlin, 1)
 
-	plot!(in_nodes_top_hat[1:15,1], in_nodes_top_hat[1:15,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	num_top_hat_net_section_nodes = num_top_hat_purlin_net_section_nodes - num_purlin_nodes
 
-	plot!(center_nodes_top_hat[16:end,1], center_nodes_top_hat[16:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	plot_index = Int(num_top_hat_net_section_nodes/2)
 
-	plot!(out_nodes_top_hat[16:end,1], out_nodes_top_hat[16:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	plot!(center_nodes_top_hat[1:plot_index,1], center_nodes_top_hat[1:plot_index,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
 
-	plot!(in_nodes_top_hat[16:end,1], in_nodes_top_hat[16:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+	plot!(out_nodes_top_hat[1:plot_index,1], out_nodes_top_hat[1:plot_index,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+
+	plot!(in_nodes_top_hat[1:plot_index,1], in_nodes_top_hat[1:plot_index,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+
+	plot!(center_nodes_top_hat[end-plot_index+1:end,1], center_nodes_top_hat[end-plot_index+1:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+
+	plot!(out_nodes_top_hat[end-plot_index+1:end,1], out_nodes_top_hat[end-plot_index+1:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
+
+	plot!(in_nodes_top_hat[end-plot_index+1:end,1], in_nodes_top_hat[end-plot_index+1:end,2], aspect_ratio=:equal, linecolor = :grey, legend=false)
 
 end	
 
@@ -480,27 +485,51 @@ function generate_top_hat_geometry(t, xcoords_center, ycoords_center, roof_slope
 
 	center_nodes = [xcoords_center ycoords_center zeros(Float64, length(xcoords_center))]
 
-	center_nodes = Geometry.shift_nodes(center_nodes, Δx=Δx, Δy=Δy, Δz=Δz)
+	center_nodes = LinesCurvesNodes.shift_nodes(center_nodes, Δx=Δx, Δy=Δy, Δz=Δz)
 
-	center_nodes_rotated = Geometry.rotate_nodes(center_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	center_nodes_rotated = LinesCurvesNodes.rotate_nodes(center_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
 	
-		#Calculate surface normals.
-	closed_or_open = 1
-	unitnormals = SectionProperties.surface_normals(center_nodes[:, 1], center_nodes[:, 2], closed_or_open)
+
+	cross_section = [[xcoords_center[i], ycoords_center[i]] for i in eachindex(xcoords_center)]
+	
+	unit_node_normals = CrossSection.Tools.calculate_cross_section_unit_node_normals(cross_section)
+	
+	outside = CrossSection.Tools.get_coords_along_node_normals(cross_section, unit_node_normals, t/2)
+	X = [outside[i][1] for i in eachindex(outside)]
+	Y = [outside[i][2] for i in eachindex(outside)]
+	out_nodes = [X Y zeros(Float64, length(xcoords_center))]
+	out_nodes = LinesCurvesNodes.shift_nodes(out_nodes, Δx=Δx, Δy=Δy, Δz=Δz)
+	out_nodes_rotated = LinesCurvesNodes.rotate_nodes(out_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	
+	inside = CrossSection.Tools.get_coords_along_node_normals(cross_section, unit_node_normals, -t/2)
+	X = [inside[i][1] for i in eachindex(inside)]
+	Y = [inside[i][2] for i in eachindex(inside)]
+	in_nodes = [X Y zeros(Float64, length(xcoords_center))]
+	in_nodes = LinesCurvesNodes.shift_nodes(in_nodes, Δx=Δx, Δy=Δy, Δz=Δz)
+	in_nodes_rotated = LinesCurvesNodes.rotate_nodes(in_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+
+
+   ####3
+
+	# center_nodes_rotated = Geometry.rotate_nodes(center_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	
+	# 	#Calculate surface normals.
+	# closed_or_open = 1
+	# unitnormals = SectionProperties.surface_normals(center_nodes[:, 1], center_nodes[:, 2], closed_or_open)
 
 	
-	nodenormals = SectionProperties.avg_node_normals(unitnormals, closed_or_open)
+	# nodenormals = SectionProperties.avg_node_normals(unitnormals, closed_or_open)
 
 
-	xcoords_out, ycoords_out = SectionProperties.xycoords_along_normal(center_nodes[:, 1], center_nodes[:, 2], nodenormals, t/2)
+	# xcoords_out, ycoords_out = SectionProperties.xycoords_along_normal(center_nodes[:, 1], center_nodes[:, 2], nodenormals, t/2)
 
-	out_nodes_rotated = [xcoords_out ycoords_out zeros(Float64, length(xcoords_center))]
+	# out_nodes_rotated = [xcoords_out ycoords_out zeros(Float64, length(xcoords_center))]
 
-	# out_nodes_rotated = Geometry.rotate_nodes(out_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
+	# # out_nodes_rotated = Geometry.rotate_nodes(out_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
 
-	xcoords_in, ycoords_in = SectionProperties.xycoords_along_normal(center_nodes[:, 1], center_nodes[:, 2], nodenormals, -t/2)
+	# xcoords_in, ycoords_in = SectionProperties.xycoords_along_normal(center_nodes[:, 1], center_nodes[:, 2], nodenormals, -t/2)
 
-	in_nodes_rotated = [xcoords_in ycoords_in zeros(Float64, length(xcoords_center))]
+	# in_nodes_rotated = [xcoords_in ycoords_in zeros(Float64, length(xcoords_center))]
 
 	# in_nodes_rotated = Geometry.rotate_nodes(in_nodes, rotation_axis = "z", rotation_center = [0.0, 0.0, 0.0], θ=atan(roof_slope))
 
