@@ -1,6 +1,6 @@
 module TopHatDesigner
 
-using PurlinLine, CUFSM, SectionProperties, NumericalIntegration, ThinWalledBeam, ThinWalledBeamColumn, S100AISI, ScrewConnections
+using PurlinLine, CUFSM, SectionProperties, NumericalIntegration, ThinWalledBeam, ThinWalledBeamColumn, S100AISI, ScrewConnections, CrossSection
 
 export define, analysis, capacity
 
@@ -159,23 +159,35 @@ function define_top_hat_cross_sections(cross_section_dimensions, n, n_radius)
         r6 = cross_section_dimensions[i][21]
 
         #Define straight-line lengths on the top cross-section surface.   
-        ΔL = [d_top_minus_y, b_top_minus_y, h_minus_y - t, b_bottom - 2*t, h_plus_y - t, b_top_plus_y, d_top_plus_y]
-        θ = [α1, α2, α3, α4, α5, α6, α7]
+        L = [d_top_minus_y, b_top_minus_y, h_minus_y - t, b_bottom - 2*t, h_plus_y - t, b_top_plus_y, d_top_plus_y]
+        θ = deg2rad.([α1, α2, α3, α4, α5, α6, α7])
 
         #Note that the outside radius is used at the top flanges, and the inside radius is used for the bottom flange.
         radius = [r1, r2, r3-t, r4-t, r5, r6]
 
-        closed_or_open = 1
+        # closed_or_open = 1
 
-        top_hat_section = SectionProperties.Feature(ΔL, θ, n, radius, n_radius, closed_or_open)
+        # top_hat_section = SectionProperties.Feature(ΔL, θ, n, radius, n_radius, closed_or_open)
 
-        #Calculate the out-to-out surface coordinates.
-        xcoords_out, ycoords_out = SectionProperties.get_xy_coordinates(top_hat_section)
+        # #Calculate the out-to-out surface coordinates.
+        # xcoords_out, ycoords_out = SectionProperties.get_xy_coordinates(top_hat_section)
 
-        #Calculate centerline coordinates.
-        unitnormals = SectionProperties.surface_normals(xcoords_out, ycoords_out, closed_or_open)
-        nodenormals = SectionProperties.avg_node_normals(unitnormals, closed_or_open)
-        xcoords_center, ycoords_center = SectionProperties.xycoords_along_normal(xcoords_out, ycoords_out, nodenormals, -t/2)
+        # #Calculate centerline coordinates.
+        # unitnormals = SectionProperties.surface_normals(xcoords_out, ycoords_out, closed_or_open)
+        # nodenormals = SectionProperties.avg_node_normals(unitnormals, closed_or_open)
+        # xcoords_center, ycoords_center = SectionProperties.xycoords_along_normal(xcoords_out, ycoords_out, nodenormals, -t/2)
+
+
+        cross_section = CrossSection.generate_thin_walled(L, θ, n, radius, n_radius)
+
+        #Get node normals on cross-section
+        unit_node_normals = CrossSection.Tools.calculate_cross_section_unit_node_normals(cross_section)
+        #Get centerline coords
+        centerline = CrossSection.Tools.get_coords_along_node_normals(cross_section, unit_node_normals, t/2)
+          
+        xcoords_center = [centerline[i][1] for i in eachindex(cross_section)]
+        ycoords_center = [centerline[i][2] for i in eachindex(cross_section)]
+
 
         #Shift y coordinates so that the bottom face is at y = 0.
         ycoords_center = ycoords_center .- minimum(ycoords_center) .+ t/2
@@ -259,7 +271,7 @@ function define_top_hat_purlin_cross_sections(purlin_cross_section_dimensions, p
         top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions = combine_top_hat_purlin_geometry(purlin_cross_section_dimensions[i], purlin_plastic_cross_section_data[i], top_hat_plastic_cross_section_data[i])
 
         about_axis = "x"  #The strong axis plastic properties are needed for now.  
-        top_hat_purlin_plastic_section_properties = SectionProperties.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
+        top_hat_purlin_plastic_section_properties = SectionProperties.Lines.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
 
         #Add cross section information to data structure.
         top_hat_purlin_cross_section_data[i] = PurlinLine.CrossSectionData(n, n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, top_hat_purlin_section_properties, top_hat_purlin_plastic_section_properties)
@@ -892,7 +904,7 @@ function define_top_hat_purlin_net_section(purlin_cross_section_dimensions, top_
         top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions = generate_top_hat_net_section_purlin_geometry(top_hat_purlin_plastic_cross_section_data[i], top_hat_plastic_cross_section_data[i], purlin_plastic_cross_section_data[i], purlin_cross_section_dimensions[i], top_hat_punch_out_dimensions)
 
         about_axis = "x"  #The strong axis plastic properties are needed for now.  
-        top_hat_purlin_plastic_section_properties = SectionProperties.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
+        top_hat_purlin_plastic_section_properties = SectionProperties.Lines.calculate_plastic_section_properties(top_hat_purlin_plastic_node_geometry, top_hat_purlin_plastic_element_definitions, about_axis)
 
         #Add cross section information to data structure.
         cross_section_data[i] = PurlinLine.CrossSectionData(top_hat_purlin_cross_section_data[i].n, top_hat_purlin_cross_section_data[i].n_radius, top_hat_purlin_node_geometry, top_hat_purlin_element_definitions, section_properties, top_hat_purlin_plastic_section_properties)
@@ -1591,8 +1603,19 @@ function calculate_shear_strength(top_hat_purlin_line)
         Fcrv_purlin = S100AISI.v16.g232(E_purlin, μ_purlin, kv_purlin, h_flat_purlin, t_purlin)
         Vcr_purlin = S100AISI.v16.g231(h_flat_purlin, t_purlin, Fcrv_purlin)
 
+
+        # Fcrv = S100AISI.v16.g232(E, μ, kv, h_flat, t)
+        # Vcr = S100AISI.v16.g231(h_flat, t, Fcrv)
+
+        #Calculate shear yield force.
+        Aw, Vy_purlin = S100AISI.v16.g215_6(h_flat_purlin, t_purlin, Fy_purlin)
+
         #Calculate shear buckling strength.
-        Vn_purlin, eVn_purlin = S100AISI.v16.g21(h_flat_purlin, t_purlin, Fy_purlin, Vcr_purlin, top_hat_purlin_line.inputs.design_code)
+        # Vn, eVn = S100AISI.v16.g21(h_flat, t, Fy, Vcr, purlin_line.inputs.design_code)
+        Vn_purlin, eVn_purlin = S100AISI.v16.g21_3(Vcr_purlin, Vy_purlin, top_hat_purlin_line.inputs.design_code)
+
+        #Calculate shear buckling strength.
+        # Vn_purlin, eVn_purlin = S100AISI.v16.g21(h_flat_purlin, t_purlin, Fy_purlin, Vcr_purlin, top_hat_purlin_line.inputs.design_code)
 
         #Vn, TopHat
 
@@ -1617,9 +1640,14 @@ function calculate_shear_strength(top_hat_purlin_line)
         Fcrv_top_hat = S100AISI.v16.g232(E_top_hat, μ_top_hat, kv_top_hat, h_flat_top_hat, t_top_hat)
         Vcr_top_hat = S100AISI.v16.g231(h_flat_top_hat, t_top_hat, Fcrv_top_hat)
 
-        #Calculate shear buckling strength for one web of TopHat.
-        Vn_top_hat, eVn_top_hat = S100AISI.v16.g21(h_flat_top_hat, t_top_hat, Fy_top_hat, Vcr_top_hat, top_hat_purlin_line.inputs.design_code)
+        #Calculate shear yield force.
+        Aw, Vy_top_hat = S100AISI.v16.g215_6(h_flat_top_hat, t_top_hat, Fy_top_hat)
 
+        #Calculate shear buckling strength for one web of TopHat.
+        # Vn_top_hat, eVn_top_hat = S100AISI.v16.g21(h_flat_top_hat, t_top_hat, Fy_top_hat, Vcr_top_hat, top_hat_purlin_line.inputs.design_code)
+
+        Vn_top_hat, eVn_top_hat = S100AISI.v16.g21_3(Vcr_top_hat, Vy_top_hat, top_hat_purlin_line.inputs.design_code)
+ 
         Vn = Vn_purlin + 2 * Vn_top_hat
         eVn = eVn_purlin + 2 * eVn_top_hat
 
