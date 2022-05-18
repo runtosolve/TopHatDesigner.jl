@@ -2270,19 +2270,19 @@ function capacity(top_hat_purlin_line)
 
     while residual > DC_tolerance
 
-        print("residual=", residual)
-        print("max_DC=", max_DC)
-        print("pressure=", top_hat_purlin_line.applied_pressure*1000*144)
-        print("new pressure=", top_hat_purlin_line.applied_pressure*1000*144)
+        # print("residual=", residual)
+        # print("max_DC=", max_DC)
+        # print("pressure=", top_hat_purlin_line.applied_pressure*1000*144)
+        # print("new pressure=", top_hat_purlin_line.applied_pressure*1000*144)
 
         new_pressure = top_hat_purlin_line.applied_pressure / max_DC
 
-        print("new pressure=", top_hat_purlin_line.applied_pressure*1000*144)
+        # print("new pressure=", top_hat_purlin_line.applied_pressure*1000*144)
 
         #top_hat_purlin_line.applied_pressure = top_hat_purlin_line.applied_pressure + (new_pressure - top_hat_purlin_line.applied_pressure) / 2
         top_hat_purlin_line.applied_pressure = new_pressure
 
-        print("updated pressure=", top_hat_purlin_line.applied_pressure*1000*144)
+        # print("updated pressure=", top_hat_purlin_line.applied_pressure*1000*144)
 
         top_hat_purlin_line = TopHatDesigner.analysis(top_hat_purlin_line)
         max_DC = PurlinLine.find_max_demand_to_capacity(top_hat_purlin_line)
